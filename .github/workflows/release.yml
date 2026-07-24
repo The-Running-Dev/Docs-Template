@@ -56,7 +56,7 @@
 #
 # Required Permissions:
 # - contents:read  : Read repository content for build
-# - pages:write    : Deploy content to GitHub Pages
+# - pages:write    : Used by the deploy job permissions when publishing to GitHub Pages
 # - id-token:write : Verify deployment authenticity
 #
 # Security Features:
@@ -92,10 +92,11 @@
 #
 # Required Permissions:
 # - packages:write : Publish Docker images to GitHub Container Registry
-# - contents:write : Create GitHub releases and tags
+# - pages:write    : Used only in the deploy job's job-level permissions
 #
 # Required Secrets:
-# - GITHUB_TOKEN / REGISTRY_TOKEN : Token with package write permissions for GHCR publication
+# - REGISTRY_TOKEN : Token/PAT with package write permissions for GHCR publication
+# - NOTIFICATIONS_WEBHOOK_URL : Webhook used by the build agent for release notifications
 #
 # Security Features:
 # - Minimal required permissions (principle of least privilege)
@@ -227,7 +228,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Push Container to GitHub Registry
         if: github.event_name != 'pull_request'
