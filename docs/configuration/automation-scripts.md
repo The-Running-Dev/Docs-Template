@@ -4,34 +4,34 @@ title: Automation
 sidebar_position: 3
 ---
 
-The template includes two PowerShell scripts to streamline the development workflow:
+The template includes setup and development PowerShell scripts to streamline the workflow:
 
-### `template-setup.ps1` - Template Configuration
+### `scripts/setup-docs.ps1` - Template Configuration
 
-Sets up badge configuration and handles any remaining template files.
+Creates a baseline docs scaffold and prepares a copied template for first use.
 
 **Usage:**
 
 ```powershell
 # Run from template directory
-.\template-setup.ps1
+.\scripts\setup-docs.ps1
 
 # Or specify a different project directory
-.\template-setup.ps1 -projectDir "C:\path\to\project"
+.\scripts\setup-docs.ps1 -ProjectDir "C:\path\to\project"
 ```
 
 **What it does:**
 
-- Sets up static configuration files for badges and Giscus comments
-- Processes any remaining `.example` files in the project
-- Cleans up template files after successful setup
+- Creates `docs/` when missing
+- Creates `docs/index.md` when missing
+- Supports setup in any target folder via `-ProjectDir`
 - Provides colored console output for progress tracking
 
 **Perfect for:**
 
-- Setting up static configuration for your project
-- Final template cleanup after customization
-- Ensuring all configuration files are properly set up
+- Initializing a fresh copy of the template
+- Bootstrapping docs folders in another repository
+- Running a consistent setup step in local or CI workflows
 
 ### `template-build.ps1` - Development Server Launcher
 

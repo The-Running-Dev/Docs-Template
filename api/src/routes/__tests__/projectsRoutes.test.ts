@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Fastify from 'fastify';
-import { registerProjectsRoutes } from './projectsRoutes';
-import { resetContainer } from '../lib/di/index';
-import { SERVICE_TOKENS } from '../lib/di/tokens';
+import { registerProjectsRoutes } from '../projectsRoutes';
+import { resetContainer } from '../../lib/di/index';
+import { SERVICE_TOKENS } from '../../lib/di/tokens';
 
 // Helper to create app instance
 async function createApp() {
   resetContainer();
 
   // Register mock services
-  const { container } = await import('../lib/di/container');
+  const { container } = await import('../../lib/di/container');
 
   // Mock IProjectRepository
   const mockRepo = {
@@ -182,7 +182,7 @@ describe('Projects API', () => {
   it('handles project not found for DELETE', async () => {
     // Update the app creation to mock a non-existent project
     resetContainer();
-    const { container } = await import('../lib/di/container');
+    const { container } = await import('../../lib/di/container');
 
     const mockRepo = {
       getAll: async () => [],
@@ -250,7 +250,7 @@ describe('Projects API', () => {
   it('handles repository without search method for search endpoint', async () => {
     // Test fallback search functionality
     resetContainer();
-    const { container } = await import('../lib/di/container');
+    const { container } = await import('../../lib/di/container');
 
     const mockRepo = {
       getAll: async () => [],
@@ -319,7 +319,7 @@ describe('Projects API', () => {
   it('handles repository without getByCategory method for category endpoint', async () => {
     // Test fallback category functionality
     resetContainer();
-    const { container } = await import('../lib/di/container');
+    const { container } = await import('../../lib/di/container');
 
     const mockRepo = {
       getAll: async () => [],

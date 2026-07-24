@@ -4,7 +4,12 @@ import Fastify from 'fastify';
 // Mock the modules at the top level
 const mockUserRepo = {
   findByUsername: vi.fn(),
-  validatePassword: vi.fn()
+  validatePassword: vi.fn(),
+  findById: vi.fn(() => ({
+    id: '1',
+    username: 'admin',
+    roles: ['admin']
+  }))
 };
 
 const mockJwtService = {
@@ -14,31 +19,31 @@ const mockJwtService = {
 };
 
 // Mock dynamic imports using vi.doMock for modules imported dynamically
-vi.doMock('../services/jwtService', () => mockJwtService);
-vi.doMock('../repositories/database-user-repository', () => ({
+vi.doMock('../../services/jwtService', () => mockJwtService);
+vi.doMock('../../repositories/database-user-repository', () => ({
   DatabaseUserRepository: vi.fn(() => mockUserRepo)
 }));
-vi.doMock('../lib/di/index', () => ({
+vi.doMock('../../lib/di/index', () => ({
   getService: vi.fn(() => ({ isDevelopment: () => true }))
 }));
-vi.doMock('../lib/di/tokens', () => ({
+vi.doMock('../../lib/di/tokens', () => ({
   SERVICE_TOKENS: { CONFIG_SERVICE: 'config' }
 }));
 
 // Also mock them statically for good measure
-vi.mock('../services/jwtService', () => mockJwtService);
-vi.mock('../repositories/database-user-repository', () => ({
+vi.mock('../../services/jwtService', () => mockJwtService);
+vi.mock('../../repositories/database-user-repository', () => ({
   DatabaseUserRepository: vi.fn(() => mockUserRepo)
 }));
-vi.mock('../lib/di/index', () => ({
+vi.mock('../../lib/di/index', () => ({
   getService: vi.fn(() => ({ isDevelopment: () => true }))
 }));
-vi.mock('../lib/di/tokens', () => ({
+vi.mock('../../lib/di/tokens', () => ({
   SERVICE_TOKENS: { CONFIG_SERVICE: 'config' }
 }));
 
 // Import after mocking
-import { registerAuthRoutes } from './authRoutes';
+import { registerAuthRoutes } from '../authRoutes';
 
 async function createApp() {
   const app = Fastify();

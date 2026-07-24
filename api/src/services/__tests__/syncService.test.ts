@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SyncService } from './syncService';
+import { SyncService } from '../syncService';
 import {
   IProjectRepository,
   IRepoProvider,

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { DatabaseProjectRepository } from './database-project-repository';
-import { IConfigService } from './interfaces';
-import { ProjectEntity } from './entities/project-entity';
+import { DatabaseProjectRepository } from '../database-project-repository';
+import { IConfigService } from '../interfaces';
+import { ProjectEntity } from '../entities/project-entity';
 
 // Mock the DataSource
 const mockDataSource = {

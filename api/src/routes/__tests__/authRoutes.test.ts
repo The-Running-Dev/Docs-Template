@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import Fastify from 'fastify';
-import { registerAuthRoutes } from './authRoutes';
+import { registerAuthRoutes } from '../authRoutes';
 
 async function createApp() {
   const app = Fastify();
