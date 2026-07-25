@@ -39,7 +39,7 @@
 # 1. Full repository checkout with complete git history
 # 2. Install dependencies and run repository quality checks
 # 3. Generate derived data and build the production Docusaurus site
-# 4. Invoke the build-agent's internal `build docker` command to build/publish the docs-template container image
+# 4. Run scripts/docs-build-image.ps1 to version, build, and publish the docs-template container image
 # 5. Upload the Pages artifact from `artifacts/`
 # 6. Deploy the built site to GitHub Pages
 #
@@ -48,7 +48,7 @@
 # - React 19 with modern TypeScript support
 # - FontAwesome integration for badge components
 # - YAML-to-JSON pre-build pipeline for documentation data
-# - docs-template container image published through the build agent
+# - docs-template container image published via scripts/docs-build-image.ps1
 #
 # ====================================================================
 # PERMISSIONS & SECURITY
@@ -84,7 +84,7 @@
 # ====================================================================
 # - ESLint, TypeScript, and script validation through `pnpm run quality-ci`
 # - Artifacts output: `artifacts/`
-# - Docker image build/publish delegated to the shared build agent
+# - Docker image build/publish handled by scripts/docs-build-image.ps1
 #
 # ====================================================================
 # PERMISSIONS & SECURITY
@@ -96,7 +96,10 @@
 #
 # Required Secrets:
 # - REGISTRY_TOKEN : Token/PAT with package write permissions for GHCR publication
-# - NOTIFICATIONS_WEBHOOK_URL : Webhook used by the build agent for release notifications
+#
+# Optional Secrets:
+# - NOTIFICATIONS_WEBHOOK_URL : Consumed by the build-agent's internal release
+#   notifications; provided to the job as NotificationsWebHookUrl.
 #
 # Security Features:
 # - Minimal required permissions (principle of least privilege)
@@ -104,23 +107,24 @@
 # - Container isolation for the documentation build process
 # - Token scoping to GitHub Pages and GHCR publication
 #
-# Note: The custom build container provides the `build docker` command used to
-# publish the docs-template image without a second checkout or separate Docker job.
+# Note: scripts/docs-build-image.ps1 builds the docs-template image from the
+# root Dockerfile and pushes it, reusing this job's checkout and Docker daemon.
 #
 # ====================================================================
 # VERSIONING STRATEGY
 # ====================================================================
 #
 # Image and site publication run from the main branch release workflow.
-# Image versioning/tagging is handled internally by the build agent.
+# The image is tagged :latest and a date-based :YYYY.MM.DD version computed in
+# the publish step; both are pushed by scripts/docs-build-image.ps1.
 #
 # ====================================================================
 # OUTPUTS & ARTIFACTS
 # ====================================================================
 #
 # This workflow produces:
-# - Docker Image: ghcr.io/the-running-dev/docs-template:version
-# - Registry Tags: managed internally by the build agent
+# - Docker Image: ghcr.io/the-running-dev/docs-template:latest and :YYYY.MM.DD
+# - Registry Tags: :latest plus a date-based version, pushed by the publish step
 # - GitHub Pages deployment for the static documentation site
 # - One release path for both site and container outputs
 #
@@ -179,6 +183,14 @@ jobs:
     container:
       image: ghcr.io/the-running-dev/build-agent:latest
 
+    # Secrets consumed by the build-agent's internal tooling (e.g. release
+    # notifications). Provided at the job level so the agent picks them up.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_ACTOR: ${{ github.actor }}
+      RegistryToken: ${{ secrets.REGISTRY_TOKEN }}
+      NotificationsWebHookUrl: ${{ secrets.NOTIFICATIONS_WEBHOOK_URL }}
+
     steps:
       # ================================================================
       # STEP 1: REPOSITORY CHECKOUT
@@ -211,16 +223,13 @@ jobs:
           NODE_ENV: production
 
       # ================================================================
-      # STEP 5: BUILD CONTAINER
+      # STEP 5: VERSION, BUILD & PUBLISH CONTAINER IMAGE
       # ================================================================
-      - name: Build Container
-        if: github.event_name != 'pull_request'
-        run: build docker
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
-          RegistryToken: ${{ secrets.REGISTRY_TOKEN }}
-          NotificationsWebHookUrl: ${{ secrets.NOTIFICATIONS_WEBHOOK_URL }}
+      # On pull requests, validate the image builds (no login, no push).
+      - name: Build docs-template Image (validate, no push)
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: ./scripts/docs-build-image.ps1
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
@@ -230,9 +239,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
-      - name: Push Container to GitHub Registry
+      - name: Version, Build & Push docs-template Image
+        id: publish
         if: github.event_name != 'pull_request'
-        run: docker push ghcr.io/the-running-dev/docs-template:latest
+        shell: pwsh
+        run: |
+          $version = Get-Date -Format 'yyyy.MM.dd'
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Publishing docs-template image :latest and :$version"
+          ./scripts/docs-build-image.ps1 `
+            -AdditionalTags "ghcr.io/the-running-dev/docs-template:$version" `
+            -Push
 
       # ================================================================
       # STEP 6: UPLOAD PAGES ARTIFACT
@@ -304,7 +321,7 @@ jobs:
 #
 # 5. Script Execution Issues:
 #    - Verify pre-build data generation in scripts/pre-build.ts
-#    - Ensure the build-agent image exposes the expected `build docker` command in GitHub Actions
+#    - Ensure the build-agent image provides pwsh + docker so scripts/docs-build-image.ps1 can run
 #
 # 6. GitHub Pages Deployment Failures:
 #    - Ensure repository has Pages enabled in settings
@@ -321,7 +338,7 @@ jobs:
 # 8. Container Publication Issues:
 #    - Verify workflow permissions include packages:write
 #    - Ensure GITHUB_TOKEN/REGISTRY_TOKEN is available to the build job
-#    - Confirm the build-agent image supports `build docker` in the GitHub Actions job environment
+#    - Confirm the build-agent image provides pwsh + a working Docker daemon for the publish step
 #
 # ====================================================================
 # MONITORING & MAINTENANCE
@@ -340,7 +357,7 @@ jobs:
 # - Validate MDX content processing and component rendering
 # - Monitor production bundle sizes and optimization opportunities
 # - Test GitHub Pages deployment with custom domain (if configured)
-# - Revalidate build-agent-driven image publication when the build-agent image changes
+# - Revalidate image publication (scripts/docs-build-image.ps1) when the build-agent image changes
 #
 # Monitoring Points:
 # - GitHub Actions workflow run status and timing

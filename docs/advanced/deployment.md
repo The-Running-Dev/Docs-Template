@@ -25,7 +25,8 @@ The `build` job:
 - installs dependencies
 - runs `pnpm run quality-ci`
 - runs `pnpm run build:prod`
-- runs `build docker` inside the build-agent environment
+- on pull requests, validates the container image builds (`scripts/docs-build-image.ps1`, no push)
+- on push/manual runs, versions, builds, and pushes the container image (see Container Registry below)
 - uploads the Pages artifact from `artifacts/`
 
 The `deploy` job then publishes the built site to GitHub Pages on push or manual runs.
@@ -35,7 +36,8 @@ The `deploy` job then publishes the built site to GitHub Pages on push or manual
 The same release workflow publishes the template container image to GitHub Container Registry.
 
 - Image: `ghcr.io/the-running-dev/docs-template`
-- Publication is handled internally by the build-agent's `build docker` command on push or manual runs.
+- On push or manual runs, the build job logs in to GHCR and runs `scripts/docs-build-image.ps1` to build the image from the root `Dockerfile` and push both `:latest` and a date-based `:YYYY.MM.DD` tag.
+- On pull requests the image is built for validation only (no login, no push).
 - The workflow grants `packages: write` so the build job can push the image.
 
 ### Base Image Project Copy Behavior
