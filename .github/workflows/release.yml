@@ -98,7 +98,8 @@
 # - REGISTRY_TOKEN : Token/PAT with package write permissions for GHCR publication
 #
 # Optional Secrets:
-# - NOTIFICATIONS_WEBHOOK_URL : Best-effort release notification after publish (JSON {"text": ...})
+# - NOTIFICATIONS_WEBHOOK_URL : Consumed by the build-agent's internal release
+#   notifications; provided to the job as NotificationsWebHookUrl.
 #
 # Security Features:
 # - Minimal required permissions (principle of least privilege)
@@ -182,6 +183,14 @@ jobs:
     container:
       image: ghcr.io/the-running-dev/build-agent:latest
 
+    # Secrets consumed by the build-agent's internal tooling (e.g. release
+    # notifications). Provided at the job level so the agent picks them up.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_ACTOR: ${{ github.actor }}
+      RegistryToken: ${{ secrets.REGISTRY_TOKEN }}
+      NotificationsWebHookUrl: ${{ secrets.NOTIFICATIONS_WEBHOOK_URL }}
+
     steps:
       # ================================================================
       # STEP 1: REPOSITORY CHECKOUT
@@ -241,24 +250,6 @@ jobs:
           ./scripts/docs-build-image.ps1 `
             -AdditionalTags "ghcr.io/the-running-dev/docs-template:$version" `
             -Push
-
-      # Best-effort release notification (replaces the build-agent's webhook).
-      # Skipped when the secret is unset; a failed post does not fail the release.
-      - name: Notify Release Webhook
-        if: github.event_name != 'pull_request' && success()
-        continue-on-error: true
-        shell: pwsh
-        env:
-          WEBHOOK_URL: ${{ secrets.NOTIFICATIONS_WEBHOOK_URL }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WEBHOOK_URL)) {
-            Write-Host 'NOTIFICATIONS_WEBHOOK_URL not set; skipping notification.'
-            return
-          }
-          $version = '${{ steps.publish.outputs.version }}'
-          $text = "docs-template image published: :latest and :$version ($env:GITHUB_REPOSITORY@$($env:GITHUB_SHA.Substring(0,7)))"
-          $payload = @{ text = $text } | ConvertTo-Json -Compress
-          Invoke-RestMethod -Uri $env:WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload
 
       # ================================================================
       # STEP 6: UPLOAD PAGES ARTIFACT
