@@ -1,1 +1,45 @@
-git push
+#!/usr/bin/env sh
+#
+# Auto-push after a successful commit.
+#
+# Three rules, each fixing a way the previous one-line `git push` misbehaved:
+#
+# 1. Never exit non-zero. post-commit runs *after* the commit already exists,
+#    so failing here prints an alarming "hook failed" for a commit that
+#    actually succeeded. A push problem is not a commit problem.
+# 2. Never auto-push the default branch. Publishing to main as a side effect of
+#    committing is how an unreviewed commit reaches everyone.
+# 3. Set the upstream when the branch lacks one, instead of dying with
+#    "fatal: The current branch has no upstream branch" (exit 128).
+#
+# Set NO_AUTOPUSH=1 to skip, or HUSKY=0 to disable every hook.
+
+if [ "${NO_AUTOPUSH:-0}" = "1" ]; then
+  echo "post-commit: NO_AUTOPUSH=1, skipping push."
+  exit 0
+fi
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+
+if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
+  echo "post-commit: detached HEAD, skipping push."
+  exit 0
+fi
+
+default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+default_branch="${default_branch:-main}"
+
+if [ "$branch" = "$default_branch" ]; then
+  echo "post-commit: on '$branch', skipping auto-push. Open a PR, or push by hand if you meant to."
+  exit 0
+fi
+
+if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  git push || echo "post-commit: push failed. The commit is safe locally — re-run 'git push' when ready."
+else
+  echo "post-commit: '$branch' has no upstream, setting one."
+  git push --set-upstream origin "$branch" ||
+    echo "post-commit: push failed. The commit is safe locally — re-run 'git push -u origin $branch' when ready."
+fi
+
+exit 0
