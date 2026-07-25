@@ -7,10 +7,20 @@
 # =============================================================================
 
 # Dependency directories
+#
+# The `**/` prefix is load-bearing: Docker matches .dockerignore patterns
+# against the full context-relative path, so a bare `node_modules/` excludes
+# only the root one. Without these, `api/node_modules` (~160MB of pnpm store)
+# is sent as build context and BuildKit fails on the symlinks inside
+# `.pnpm/` with "invalid file request".
 node_modules/
+**/node_modules/
 jspm_packages/
+**/jspm_packages/
 .pnpm-store/
+**/.pnpm-store/
 web_modules/
+**/web_modules/
 
 # Package manager files
 .npm
@@ -63,16 +73,23 @@ pids
 .temp
 .fusebox/
 
-# Build outputs
+# Build outputs (same `**/` reasoning as node_modules above — `api/dist` and
+# `api/coverage` both exist and would otherwise be sent)
 build/
+**/build/
 dist/
+**/dist/
 out/
+**/out/
 artifacts/
+**/artifacts/
 
 # Coverage and testing
 coverage/
+**/coverage/
 *.lcov
 .nyc_output
+**/.nyc_output
 lib-cov
 
 # TypeScript cache
@@ -94,6 +111,7 @@ build/Release
 
 # Docusaurus
 .docusaurus/
+**/.docusaurus/
 
 # Next.js
 .next/
