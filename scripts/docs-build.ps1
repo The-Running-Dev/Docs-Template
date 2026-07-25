@@ -98,15 +98,37 @@ if (-not (Test-Path -LiteralPath $builtSite)) {
 
 Write-Host "[DOCS-BUILD] Copying static site to '$OutputPath' ..." -ForegroundColor Cyan
 
+$workspaceRoot = (Resolve-Path -LiteralPath '.').Path.TrimEnd([IO.Path]::DirectorySeparatorChar, '/')
+
 if (Test-Path -LiteralPath $OutputPath) {
     # Clear any prior contents so a rerun cannot publish stale files that the
-    # current build no longer produces. Guard against dangerous targets first.
-    $resolved = (Resolve-Path -LiteralPath $OutputPath).Path
-    $normalized = $resolved.TrimEnd([IO.Path]::DirectorySeparatorChar, '/')
-    if ([string]::IsNullOrWhiteSpace($normalized) -or $normalized -eq $templateRoot -or ($normalized -match '^[A-Za-z]:$') -or ($normalized -match '^[\\/]+$')) {
-        throw "Refusing to clear unsafe output path '$resolved'."
+    # current build no longer produces. Resolve and validate the target first so
+    # a checked-in symlink or an unsafe path can't redirect the deletion.
+    $item = Get-Item -LiteralPath $OutputPath -Force
+
+    if ($item.LinkType) {
+        # A symlink/reparse point could point anywhere (e.g. artifacts/docs -> /);
+        # never follow it to clear another location.
+        throw "Refusing to use symlinked output path '$OutputPath' (LinkType=$($item.LinkType))."
     }
-    Get-ChildItem -LiteralPath $resolved -Force | Remove-Item -Recurse -Force
+
+    if (-not $item.PSIsContainer) {
+        # A file where a directory is expected: replace it outright.
+        Remove-Item -LiteralPath $OutputPath -Force
+        New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+    }
+    else {
+        $resolved = $item.FullName
+        $normalized = $resolved.TrimEnd([IO.Path]::DirectorySeparatorChar, '/')
+        if ([string]::IsNullOrWhiteSpace($normalized) -or
+            $normalized -eq $workspaceRoot -or
+            $normalized -eq $templateRoot -or
+            ($normalized -match '^[A-Za-z]:$') -or
+            ($normalized -match '^[\\/]+$')) {
+            throw "Refusing to clear unsafe output path '$resolved'."
+        }
+        Get-ChildItem -LiteralPath $resolved -Force | Remove-Item -Recurse -Force
+    }
 }
 else {
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
