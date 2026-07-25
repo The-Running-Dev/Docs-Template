@@ -70,10 +70,30 @@ describe('Custom404Component', () => {
     expect(spinButton).toHaveStyle('transform: none');
   });
 
-  it('shows emergency navigation links', () => {
+  it('offers only the site root when no links are supplied', () => {
     render(<Custom404Component />);
 
     expect(screen.getByText('🚀 Emergency Navigation')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Go Home/ })).toHaveAttribute(
+      'href',
+      '/'
+    );
+
+    // Nothing beyond "/" is guaranteed to resolve on a consumer's site, so the
+    // default must not emit any other route.
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  it('shows supplied emergency navigation links', () => {
+    render(
+      <Custom404Component
+        links={[
+          { to: '/docs', label: '📚 Read Docs' },
+          { to: '/demos', label: '🎮 Try Demos' }
+        ]}
+      />
+    );
+
     expect(screen.getByRole('link', { name: /Go Home/ })).toHaveAttribute(
       'href',
       '/'
@@ -86,6 +106,29 @@ describe('Custom404Component', () => {
       'href',
       '/demos'
     );
+  });
+
+  it('renders repeated routes without duplicate-key warnings', () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    render(
+      <Custom404Component
+        links={[
+          { to: '/docs', label: '📚 Read Docs', description: 'the docs' },
+          { to: '/docs', label: '📖 Browse Guides', description: 'the guides' }
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: /Read Docs/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Browse Guides/ })
+    ).toBeInTheDocument();
+    expect(consoleError).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
   });
 
   it('shows troubleshooting sections', () => {
@@ -119,24 +162,63 @@ describe('Custom404Component', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows call to action section with links', () => {
+  it('shows call to action without prose links by default', () => {
     render(<Custom404Component />);
 
     expect(
       screen.getByText('🎨 Did you enjoy this 404 page?')
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /component demos/ })
-    ).toHaveAttribute('href', '/demos');
-    expect(screen.getByRole('link', { name: /documentation/ })).toHaveAttribute(
-      'href',
-      '/docs'
-    );
+      screen.getByText(/imagine how amazing our actual content is/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/why not check out/)).not.toBeInTheDocument();
 
     // Check for the fun fact with random number
     expect(screen.getByText(/Fun Fact/)).toBeInTheDocument();
     expect(
       screen.getByText(/This number is completely made up/)
     ).toBeInTheDocument();
+  });
+
+  it('names described links in the call to action', () => {
+    render(
+      <Custom404Component
+        links={[
+          {
+            to: '/demos',
+            label: '🎮 Try Demos',
+            description: 'component demos'
+          },
+          {
+            to: '/docs',
+            label: '📚 Read Docs',
+            description: 'documentation'
+          }
+        ]}
+      />
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'component demos' })
+    ).toHaveAttribute('href', '/demos');
+    expect(screen.getByRole('link', { name: 'documentation' })).toHaveAttribute(
+      'href',
+      '/docs'
+    );
+    expect(screen.getByText(/why not check out/)).toBeInTheDocument();
+  });
+
+  it('omits undescribed links from the call to action', () => {
+    render(
+      <Custom404Component links={[{ to: '/docs', label: 'Read Docs' }]} />
+    );
+
+    // The button is still offered, but a link with no description contributes
+    // no prose, so the sentence stays off.
+    expect(screen.getByRole('link', { name: 'Read Docs' })).toHaveAttribute(
+      'href',
+      '/docs'
+    );
+    expect(screen.queryByText(/why not check out/)).not.toBeInTheDocument();
   });
 });
