@@ -13,7 +13,7 @@
     and calls the reusable workflow.
 
     Source workflow template:
-    - template/github/workflows/dos.yml
+    - template/.github/workflow/docs.yml
 
     Source instructions markdown:
     - template/instructions.md
@@ -27,7 +27,7 @@
 
 .PARAMETER TargetFileName
     Destination file name for the copied reusable workflow.
-    Default: dos.yml
+    Default: docs.yml
 
 .PARAMETER Overwrite
     Overwrite destination file if it already exists.
@@ -43,7 +43,7 @@
 param(
     [Parameter()][string]$CallerProjectDir = '.',
     [Parameter()][string]$TargetRelativeDir = '.github/workflow/common',
-    [Parameter()][string]$TargetFileName = 'dos.yml',
+    [Parameter()][string]$TargetFileName = 'docs.yml',
     [Parameter()][switch]$Overwrite
 )
 
@@ -64,7 +64,7 @@ function Resolve-OrCreateAbsolutePath {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $templateRoot = Split-Path -Parent $scriptDir
-$sourceWorkflow = Join-Path $templateRoot 'template/github/workflows/dos.yml'
+$sourceWorkflow = Join-Path $templateRoot 'template/.github/workflow/docs.yml'
 $sourceInstructions = Join-Path $templateRoot 'template/instructions.md'
 
 if (-not (Test-Path -LiteralPath $sourceWorkflow)) {

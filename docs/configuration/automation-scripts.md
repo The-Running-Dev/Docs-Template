@@ -58,7 +58,7 @@ Builds and runs docs from `docs/` using `docs/Dockerfile`.
 
 ## `scripts/setup-common-workflow.ps1` - Common Workflow Installer
 
-Copies reusable docs workflow logic from `template/github/workflows/dos.yml`
+Copies reusable docs workflow logic from `template/.github/workflow/docs.yml`
 into a caller repository under `.github/workflow/common` and prints wiring instructions.
 
 Additional reference instructions are available in `template/instructions.md`.
