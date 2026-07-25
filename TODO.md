@@ -1,6 +1,6 @@
 # TODO
 
-Last updated: 2026-07-24
+Last updated: 2026-07-26
 
 This TODO is based on the current repository audit (code, docs, tests, API package, and workflows).
 
@@ -23,9 +23,23 @@ Acceptance criteria:
 - [ ] Update testing documentation to match real coverage thresholds.
 - [ ] Decide target thresholds (current config vs desired policy) and enforce one source of truth.
 
+Confirmed drift (2026-07-26) — three sources, two different answers:
+
+| Source                            | lines | functions | branches | statements |
+| --------------------------------- | ----- | --------- | -------- | ---------- |
+| `vitest.config.ts:68-71` (actual) | 55    | 55        | 45       | 55         |
+| `testing.md:36`                   | 75    | 70        | 60       | 75         |
+| `AGENTS.md` (Testing Guidelines)  | 75    | 70        | 60       | 75         |
+
+Both docs claimed the same wrong numbers, so this reads as config having been
+lowered without the docs following. `AGENTS.md` has since been changed to point
+at the config instead of restating values; `testing.md:36` still asserts the
+wrong ones. Decide whether to raise config to the documented values or correct
+the docs — see also P1.5, which targets 80 across the board.
+
 Acceptance criteria:
 
-- `testing.md` matches `vitest.config.ts` exactly.
+- `testing.md`, `AGENTS.md`, and `vitest.config.ts` state identical thresholds.
 
 ## P1 - Documentation and Workflow Consistency
 
@@ -61,6 +75,73 @@ Acceptance criteria:
 - Coverage gates are stricter than current defaults and enforced in CI/local checks.
 - Docs and config state the same threshold values.
 
+## P1 - Convention and Review Debt
+
+Raised by the review of PR #33 (merged 2026-07-25, `171ea59`).
+
+### 10) Resolve the test-location contradiction
+
+The written standard and the actual tree disagree, and the automated reviewer
+sides with the standard — so every PR that touches a test file gets flagged.
+
+- Documented: `AGENTS.md:6` ("tests (next to code)") and `AGENTS.md:33`
+  ("Tests colocated: `*.test.ts` / `*.test.tsx` alongside source").
+- Practiced: ~40 test files under `__tests__/` directories; 8 colocated, all in
+  `src/components/Projects/`.
+- Enforced: Qodo rule 1275332 flags `__tests__/`, correctly derived from the
+  documented standard.
+
+- [ ] Decide which convention is real: colocated, or `__tests__/`.
+- [ ] If colocated wins, migrate the ~40 `__tests__/` files in a dedicated PR.
+- [ ] If `__tests__/` wins, update `AGENTS.md:6` and `AGENTS.md:33`, and relax
+      Qodo rule 1275332.
+- [ ] Do not leave this split — it is the reason the rule keeps firing.
+
+Acceptance criteria:
+
+- One convention is documented, practiced, and enforced consistently.
+- Rule 1275332 stops producing findings on conforming PRs.
+
+### 11) Carve out full-replacement swizzles in Qodo rule 1275477
+
+Rule 1275477 requires swizzled components under `src/theme/**` to wrap
+`@theme-original/*`. That is correct for decorating swizzles and wrong for
+replacing ones, and the repo already contains both:
+
+- `src/theme/DocItem/index.tsx` wraps `@theme-original/DocItem` — it adds to doc
+  pages, so upstream must still render.
+- `src/theme/NotFound/Content/index.tsx` does not — it fully replaces the 404
+  body. Wrapping would render Docusaurus' stock "could not find" block _and_ the
+  custom 404 beneath it.
+
+- [ ] Add a rule exception for `src/theme/NotFound/**`, or scope the rule to
+      decorating swizzles only.
+- [ ] Record the decorate-vs-replace distinction where reviewers will see it.
+
+Acceptance criteria:
+
+- Rule 1275477 stops flagging `NotFound/Content` on every PR that touches it.
+
+### 12) Restore this site's own 404 navigation without re-breaking consumers
+
+PR #33 removed the hardcoded `/docs` and `/demos` buttons from the shared 404.
+Correct for downstream sites, but this template's own 404 now offers only Home.
+
+Proposed: source `links` from `config/globalConfig.yml`, defaulting to empty.
+Consumers already overlay `config/` (see note in Notes below), so this site can
+declare its own routes while a consumer that declares nothing stays safe.
+
+- [ ] Verify the config hook is reachable from the `NotFound` theme context —
+      this is the open technical question and is not yet confirmed.
+- [ ] Add the `links` entries to `config/globalConfig.yml`.
+- [ ] Keep the empty default and the wrapper test asserting one link, to `/`.
+
+Acceptance criteria:
+
+- This site's 404 offers Docs and Demos again.
+- `src/theme/NotFound/Content/__tests__/index.test.tsx` still passes unchanged
+  for a consumer that configures nothing.
+
 ## P2 - API Deferred Scope and Hygiene
 
 ### 6) Move API to Phase 2 (single scope)
@@ -87,7 +168,10 @@ Acceptance criteria:
 
 ### 8) Remove obvious config/code noise
 
-- [ ] Remove duplicate imports in `vitest.config.ts`.
+- [ ] Remove duplicate imports in `vitest.config.ts` — confirmed 2026-07-26:
+      `import path from 'node:path';` appears on both line 3 and line 4, and
+      `path` is never used (the file resolves via `fileURLToPath(new URL(...))`).
+      In progress in a separate session.
 - [ ] Scan for low-risk cleanup items introduced by recent refactors.
 
 Acceptance criteria:
@@ -107,12 +191,52 @@ Acceptance criteria:
 
 1. P0.1 root tests green.
 2. P0.2 testing docs and thresholds aligned.
-3. P1.3/P1.4 docs + workflow consistency pass.
-4. P1.5 stricter coverage policy + enforcement.
-5. P2.6 API moved out of default path and documented as Phase 2.
-6. P2.7 API keep/remove decision checkpoint.
-7. P2 hygiene and backlog cleanup.
+3. P1.10/P1.11 convention decisions — cheap, and they stop the automated
+   reviewer producing findings on every PR until resolved.
+4. P1.3/P1.4 docs + workflow consistency pass.
+5. P1.5 stricter coverage policy + enforcement.
+6. P1.12 restore this site's 404 navigation.
+7. P2.6 API moved out of default path and documented as Phase 2.
+8. P2.7 API keep/remove decision checkpoint.
+9. P2 hygiene and backlog cleanup.
 
 ## Open Decisions (Need Product/Owner Input)
 
-- None. Current default decisions are set in this TODO.
+- **P1.10 — test location.** Colocated (as documented) or `__tests__/` (as
+  practiced)? Every other item in P1.10 follows from this one answer. No
+  default is set here on purpose: both directions are defensible and the cost
+  falls on whoever maintains the tree.
+- **P0.2 / P1.5 — coverage thresholds.** Raise config to the documented
+  75/70/60/75, go straight to the 80/80/80/80 target in P1.5, or correct the
+  docs down to the actual 55/55/45/55.
+
+## Notes
+
+Observations from the PR #33 review (2026-07-25/26) worth keeping.
+
+- **Consumers can override any path, not just `docs/`.** `scripts/docs-build.ps1`
+  walks the caller's `docs/` directory and copies every file over the _template
+  root_, preserving relative paths. So a consumer's `docs/config/globalConfig.yml`
+  replaces `/template/config/globalConfig.yml`, and `docs/src/theme/...` replaces
+  a swizzle. Override reach is never the constraint when weighing a config-driven
+  design — the question is only which way the default fails.
+- **Default-safe beats default-broken for anything downstream inherits.** A
+  shared component carrying routes that only this site has means a consumer who
+  does nothing gets a broken page. An empty default means doing nothing is
+  correct and adding routes is an explicit opt-in.
+- **Docs in this repo have drifted from reality more than once.**
+  `404-error-page.md` described a `src/pages/404.tsx` that has never existed in
+  git history — across its file tree, integration section, and usage example.
+  The coverage-threshold drift in P0.2 is the same failure. Worth a periodic
+  pass that checks docs against the tree rather than against other docs.
+- **`prettier --check` gives false positives on a Windows working tree.**
+  `core.autocrlf=true` yields CRLF locally while the committed blob is LF, which
+  is what CI checks out. Check the blob (`git show HEAD:<path> | prettier
+--stdin-filepath <path> --check`) before "fixing" a formatting failure that CI
+  never saw.
+- **After a squash merge, `git branch -d` reports the branch unmerged.** The
+  squash commit shares no history with the branch tip. Confirm with
+  `git diff <branch> main` returning empty before deleting.
+- **Verify a regression test by reverting the fix.** Both tests added in PR #33
+  were confirmed to fail without their fix. A test that passes either way
+  documents intent but guards nothing.

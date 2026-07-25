@@ -31,13 +31,23 @@
 
 - Framework: Vitest + jsdom; setup in `vitest.setup.ts` with Docusaurus mocks.
 - Tests colocated: `*.test.ts` / `*.test.tsx` alongside source.
-- Coverage thresholds: lines 75, functions 70, branches 60, statements 75.
+  - ⚠️ **Contested — do not treat as settled.** The tree does not match this:
+    ~40 test files live under `__tests__/` directories, and only 8 are colocated
+    (all in `src/components/Projects/`). Follow the pattern of the directory you
+    are working in, and see TODO P1.10 for the pending decision.
+- Coverage thresholds: see `vitest.config.ts` for the authoritative values.
+  - ⚠️ This file and `testing.md` both previously claimed 75/70/60/75; the config
+    is 55/55/45/55. Read the config, not the prose. TODO P0.2 tracks the fix.
 - Run locally: `pnpm test` or `pnpm test:run` before PRs.
 
 ## Commit & Pull Request Guidelines
 
 - Conventional Commits (e.g., `feat: add search bar`).
-- Husky: `pre-commit` (lint), `commit-msg` (length + guidance), `post-commit` (push).
+- Husky: `pre-commit` (lint), `commit-msg` (length + guidance), `post-commit` (auto-push).
+  - `post-commit` pushes the current branch, setting the upstream if it has none.
+    It skips the default branch and detached HEAD, and never fails the commit — a
+    push problem is reported and retried, not surfaced as a broken commit. Set
+    `NO_AUTOPUSH=1` to skip it, or `HUSKY=0` to disable every hook.
 - PRs: include summary, linked issues, screenshots for UI changes, and validation steps.
 
 ## Security & Configuration Tips
@@ -52,9 +62,47 @@
 - For the usual development flow, run `.\\template-build.ps1` from the project root; it installs dependencies, runs pre-build, and starts the dev server.
 - If you only need the standard manual path, run `pnpm run prebuild:prod` followed by `pnpm start`.
 
+## Theme Swizzles: Decorate vs Replace
+
+Two kinds live under `src/theme/`, and they have opposite requirements. Get this
+wrong and you either lose upstream behavior or render it twice.
+
+- **Decorating** — adds to what Docusaurus already renders. Must import and
+  render `@theme-original/*`. Example: `src/theme/DocItem/index.tsx`.
+- **Replacing** — substitutes the upstream content entirely. Must _not_ wrap
+  `@theme-original/*`. Example: `src/theme/NotFound/Content/index.tsx`; wrapping
+  it would show the stock "could not find" block above the custom 404.
+
+State which kind a swizzle is in its file header. Automated review flags the
+replacing ones as violations (Qodo rule 1275477) — see TODO P1.11.
+
+## Downstream Consumers
+
+This repo is a template, published as `ghcr.io/the-running-dev/docs-template`.
+Anything under `src/` is inherited by every site built from it.
+
+- `scripts/docs-build.ps1` overlays the consumer's entire `docs/` directory over
+  the _template root_, preserving relative paths. Consumers can therefore replace
+  `docusaurus.config.ts`, anything in `config/`, and anything in `src/` — not
+  just markdown. Do not assume a path is beyond their reach.
+- Shared components must **default to safe**, not to what this site happens to
+  have. Only `/` is guaranteed to resolve on a consumer site: they may serve docs
+  from the root (`routeBasePath: '/'`) or disable the pages plugin. A route that
+  does not resolve warns during their build and fails it under
+  `onBrokenLinks: 'throw'`. Make extra destinations an explicit opt-in.
+- When a shared component's safety depends on what a wrapper passes, test the
+  wrapper. `src/theme/NotFound/Content/__tests__/index.test.tsx` asserts exactly
+  one link, to `/` — that assertion, not the comment above it, is what protects
+  downstream sites.
+
 ## Recent Lessons Learned
 
 - Release validation should run on pull requests to `main` if a failed build must block merge; keep GHCR publishing and Pages deploy on push/manual runs only.
+- Verify a regression test by reverting the fix and confirming the test fails. A test that passes with and without the fix guards nothing.
+- Prefer index keys for caller-supplied list props whose uniqueness the type cannot guarantee; a composite of user fields only makes collisions rarer, not impossible.
+- `prettier --check` reports false failures on a Windows working tree: `core.autocrlf=true` gives CRLF locally while the committed blob is LF, which is what CI checks out. Check the blob before "fixing" formatting CI never complained about.
+- After a squash merge, `git branch -d` reports the branch unmerged because the squash commit shares no history with it. Confirm with `git diff <branch> main` returning empty, then delete.
+- Check documentation against the tree, not against other documentation. `404-error-page.md` described a `src/pages/404.tsx` that has never existed in git history, and the coverage thresholds in this file drifted the same way.
 - In Projects tests, mock `localStorage` explicitly and keep the mocked `useAuth.refresh` function identity stable to avoid repeated fetch effects.
 - `useAdminProjects.bulkDelete` should stay parallel and aggregate delete failures instead of failing fast.
 - `useAuthenticatedFetch` should normalize headers with `Headers` rather than object spread so plain objects, tuples, and `Headers` inputs all keep their values.
