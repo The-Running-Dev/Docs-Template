@@ -43,7 +43,11 @@
 ## Commit & Pull Request Guidelines
 
 - Conventional Commits (e.g., `feat: add search bar`).
-- Husky: `pre-commit` (lint), `commit-msg` (length + guidance), `post-commit` (push).
+- Husky: `pre-commit` (lint), `commit-msg` (length + guidance), `post-commit` (auto-push).
+  - `post-commit` pushes the current branch, setting the upstream if it has none.
+    It skips the default branch and detached HEAD, and never fails the commit — a
+    push problem is reported and retried, not surfaced as a broken commit. Set
+    `NO_AUTOPUSH=1` to skip it, or `HUSKY=0` to disable every hook.
 - PRs: include summary, linked issues, screenshots for UI changes, and validation steps.
 
 ## Security & Configuration Tips
