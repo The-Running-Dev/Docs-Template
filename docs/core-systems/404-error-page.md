@@ -13,7 +13,7 @@ The custom 404 page replaces the default Docusaurus error page with an interacti
 - **Animated Rainbow 404 Display** with CSS gradient animations
 - **Rotating Excuse Generator** that cycles through funny explanations every 3 seconds
 - **Interactive Cat Facts Spinner** with rotation animations
-- **Emergency Navigation** with quick links to important pages
+- **Emergency Navigation** with a Home button plus any configured links
 - **Fake Statistics** displaying random "helpful" metrics
 - **Absurd Troubleshooting Tips** mixing technical and creative "solutions"
 
@@ -37,7 +37,7 @@ The custom 404 page replaces the default Docusaurus error page with an interacti
    - 1-second spin animation on click
 
 4. **Emergency Navigation**
-   - Quick access buttons to Home, Docs, and Demos
+   - A Home button, plus any destinations passed via the `links` prop
    - Styled as prominent secondary buttons
    - Organized in a responsive button group
 
@@ -71,7 +71,9 @@ The 404 system uses a modern reusable component architecture:
 
 ```tsx
 // Reusable core component (v1.0)
-export default function Custom404Component(): React.JSX.Element {
+export default function Custom404Component({
+  links = []
+}: Custom404ComponentProps = {}): React.JSX.Element {
   const [excuse, setExcuse] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [catFact, setCatFact] = useState('');
@@ -98,6 +100,32 @@ export default function Custom404Component(): React.JSX.Element {
   // Enhanced render logic with accessibility
 }
 ```
+
+#### Navigation destinations
+
+`links` defaults to none, so the only route the 404 page emits is `/`.
+
+That default matters for sites built from this template. Only the site root is
+guaranteed to exist everywhere: a consumer may serve its documentation from the
+site root with `routeBasePath: '/'`, or disable the pages plugin entirely, in
+which case routes such as `/docs` and `/demos` do not exist. Emitting them
+anyway fails that consumer's build under `onBrokenLinks: 'throw'`.
+
+Pass the routes your own site actually has:
+
+```tsx
+<Custom404
+  links={[
+    { to: '/docs', label: '📚 Read Docs', description: 'documentation' },
+    { to: '/demos', label: '🎮 Try Demos', description: 'component demos' }
+  ]}
+/>
+```
+
+Each entry renders a button in the Emergency Navigation group. Adding
+`description` also names the link in the closing call to action; entries without
+one stay buttons only, and the sentence is omitted entirely when no link has a
+description.
 
 #### Theme-Level Integration (New in v1.0)
 

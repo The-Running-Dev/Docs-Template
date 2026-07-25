@@ -29,16 +29,48 @@ const CAT_FACTS = [
 ];
 
 /**
+ * A destination offered to a lost visitor, beyond the site root.
+ */
+export interface Custom404Link {
+  /** Route to link to, relative to the site root. */
+  to: string;
+
+  /** Button text, including any leading emoji. */
+  label: string;
+
+  /** Inline prose name used in the call to action, e.g. "component demos". */
+  description?: string;
+}
+
+export interface Custom404ComponentProps {
+  /**
+   * Extra destinations to offer alongside the site root.
+   *
+   * Defaults to none. Only "/" is guaranteed to exist on every site built
+   * from this template: a consumer may serve docs from the site root
+   * (`routeBasePath: '/'`) or disable the pages plugin, so routes such as
+   * `/docs` and `/demos` cannot be assumed. Passing a route that does not
+   * resolve fails the consumer's build under `onBrokenLinks: 'throw'`.
+   */
+  links?: Custom404Link[];
+}
+
+/**
  * Reusable 404 Error Component
  * Because getting lost should be fun! 🎪
  *
  * This component contains the shared 404 logic and UI that can be used
  * by both the theme NotFound component and the pages 404 component.
  */
-export default function Custom404Component(): React.JSX.Element {
+export default function Custom404Component({
+  links = []
+}: Custom404ComponentProps = {}): React.JSX.Element {
   const [excuse, setExcuse] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [catFact, setCatFact] = useState('');
+
+  // Only links that named themselves in prose belong in the call to action.
+  const describedLinks = links.filter((link) => link.description);
 
   // Rotate excuses every 3 seconds
   useEffect(() => {
@@ -171,12 +203,15 @@ export default function Custom404Component(): React.JSX.Element {
                     <Link className="button button--secondary" to="/">
                       🏠 Go Home
                     </Link>
-                    <Link className="button button--secondary" to="/docs">
-                      📚 Read Docs
-                    </Link>
-                    <Link className="button button--secondary" to="/demos">
-                      🎮 Try Demos
-                    </Link>
+                    {links.map((link) => (
+                      <Link
+                        key={link.to}
+                        className="button button--secondary"
+                        to={link.to}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -286,9 +321,21 @@ export default function Custom404Component(): React.JSX.Element {
             <h3>🎨 Did you enjoy this 404 page?</h3>
             <p>
               If this error page brought you joy, imagine how amazing our actual
-              content is! While you're here, why not check out our{' '}
-              <Link to="/demos">component demos</Link> or dive into the{' '}
-              <Link to="/docs">documentation</Link>?
+              content is!
+              {describedLinks.length > 0 && (
+                <>
+                  {' '}
+                  While you're here, why not check out{' '}
+                  {describedLinks.map((link, index) => (
+                    <React.Fragment key={link.to}>
+                      {index > 0 &&
+                        (index === describedLinks.length - 1 ? ' or ' : ', ')}
+                      <Link to={link.to}>{link.description}</Link>
+                    </React.Fragment>
+                  ))}
+                  ?
+                </>
+              )}
             </p>
             <p
               style={{
