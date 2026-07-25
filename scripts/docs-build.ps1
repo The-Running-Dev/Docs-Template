@@ -98,7 +98,17 @@ if (-not (Test-Path -LiteralPath $builtSite)) {
 
 Write-Host "[DOCS-BUILD] Copying static site to '$OutputPath' ..." -ForegroundColor Cyan
 
-if (-not (Test-Path -LiteralPath $OutputPath)) {
+if (Test-Path -LiteralPath $OutputPath) {
+    # Clear any prior contents so a rerun cannot publish stale files that the
+    # current build no longer produces. Guard against dangerous targets first.
+    $resolved = (Resolve-Path -LiteralPath $OutputPath).Path
+    $normalized = $resolved.TrimEnd([IO.Path]::DirectorySeparatorChar, '/')
+    if ([string]::IsNullOrWhiteSpace($normalized) -or $normalized -eq $templateRoot -or ($normalized -match '^[A-Za-z]:$') -or ($normalized -match '^[\\/]+$')) {
+        throw "Refusing to clear unsafe output path '$resolved'."
+    }
+    Get-ChildItem -LiteralPath $resolved -Force | Remove-Item -Recurse -Force
+}
+else {
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 }
 
