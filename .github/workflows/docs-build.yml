@@ -1,0 +1,41 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/docs-build.yml'
+      - '.github/workflows/docs-build-common.yml'
+      - 'docs/**'
+      - 'scripts/docs.ps1'
+      - 'scripts/setup-docs.ps1'
+      - 'README.md'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/docs-build.yml'
+      - '.github/workflows/docs-build-common.yml'
+      - 'docs/**'
+      - 'scripts/docs.ps1'
+      - 'scripts/setup-docs.ps1'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  docs:
+    uses: ./.github/workflows/docs-build-common.yml
+    with:
+      docs-script: ./scripts/docs.ps1
+      image-tag-prefix: containerpsgenerator-docs
+      output-path: artifacts/docs
+    secrets: inherit

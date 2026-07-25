@@ -6,7 +6,7 @@ sidebar_position: 3
 
 The template includes setup and development PowerShell scripts to streamline the workflow:
 
-### `scripts/setup-docs.ps1` - Template Configuration
+## `scripts/setup-docs.ps1` - Template Configuration
 
 Creates a baseline docs scaffold and prepares a copied template for first use.
 
@@ -18,13 +18,18 @@ Creates a baseline docs scaffold and prepares a copied template for first use.
 
 # Or specify a different project directory
 .\scripts\setup-docs.ps1 -ProjectDir "C:\path\to\project"
+
+# Setup + Docker docs build/run workflow
+.\scripts\setup-docs.ps1 -DockerDocs -Live
 ```
 
 **What it does:**
 
 - Creates `docs/` when missing
 - Creates `docs/index.md` when missing
+- Seeds `docs/index.md` from root `README.md` or `readme.md` when available
 - Supports setup in any target folder via `-ProjectDir`
+- Optionally runs Docker docs image build/run (`-DockerDocs`, `-Live`, `-BuildOnly`)
 - Provides colored console output for progress tracking
 
 **Perfect for:**
@@ -33,7 +38,39 @@ Creates a baseline docs scaffold and prepares a copied template for first use.
 - Bootstrapping docs folders in another repository
 - Running a consistent setup step in local or CI workflows
 
-### `template-build.ps1` - Development Server Launcher
+## `scripts/docs.ps1` - Docker Docs Build/Run
+
+Builds and runs docs from `docs/` using `docs/Dockerfile`.
+
+**Usage:**
+
+```powershell
+# Build and run docs image
+.\scripts\docs.ps1
+
+# Build and run with live mounts
+.\scripts\docs.ps1 -Live
+
+# Build image only
+.\scripts\docs.ps1 -BuildOnly
+```
+
+## `scripts/setup-common-workflow.ps1` - Common Workflow Installer
+
+Copies reusable docs workflow logic into a caller repository under `.github/common`
+and prints wiring instructions for project-level workflow entry files.
+
+**Usage:**
+
+```powershell
+# Copy common workflow to a caller repository
+.\scripts\setup-common-workflow.ps1 -CallerProjectDir "C:\path\to\caller"
+
+# Overwrite existing target file
+.\scripts\setup-common-workflow.ps1 -CallerProjectDir "C:\path\to\caller" -Overwrite
+```
+
+## `template-build.ps1` - Development Server Launcher
 
 **⚠️ Note:** This script has been simplified and now runs the development server directly in the current terminal rather than a separate window.
 
