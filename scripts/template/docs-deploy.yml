@@ -1,0 +1,56 @@
+name: Docs Deploy
+
+# Build the documentation and deploy it to GitHub Pages. Reusable and manually
+# runnable; the caller's main workflow decides when to call it. No push/PR
+# triggers.
+"on":
+    workflow_call:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    packages: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: github-pages
+    cancel-in-progress: false
+
+defaults:
+    run:
+        shell: pwsh
+
+jobs:
+    deploy:
+        name: Build and Deploy Documentation
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        # Run the build inside the published base image (template under /template
+        # with node_modules and PowerShell installed).
+        container:
+            image: ghcr.io/the-running-dev/docs-template:latest
+            credentials:
+                username: ${{ github.repository_owner }}
+                password: ${{ secrets.REGISTRY_TOKEN || github.token }}
+
+        steps:
+            - name: Check out Repository
+              uses: actions/checkout@v6
+
+            - name: Configure GitHub Pages
+              uses: actions/configure-pages@v5
+
+            - name: Build Documentation
+              run: /template/scripts/docs-build.ps1 -SourceDocs ./docs -OutputPath artifacts/docs
+
+            - name: Upload Pages Artifact
+              uses: actions/upload-pages-artifact@v4
+              with:
+                  path: artifacts/docs
+
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4

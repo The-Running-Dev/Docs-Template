@@ -2,14 +2,18 @@
 
 <#
 .SYNOPSIS
-    Copies the Docs workflow into a caller repository.
+    Copies the Docs CI/Deploy workflow templates into a caller repository.
 
 .DESCRIPTION
-    This script copies the Docs workflow template from this repository
-    into a caller repository under `.github/workflows`.
+    Copies both split workflow templates from this repository into a caller
+    repository under `.github/workflows`:
 
-    Source workflow template:
-    - template/.github/workflows/docs.yml
+    - scripts/template/docs-ci.yml     (verify)
+    - scripts/template/docs-deploy.yml  (deploy)
+
+    Existing destination files are left untouched (skipped with a message) unless
+    -Overwrite is passed. Each workflow declares workflow_call + workflow_dispatch
+    so the caller's main workflow drives them (verify vs deploy) via `uses:`.
 
 .PARAMETER CallerProjectDir
     Root directory of the caller repository. Defaults to current directory.
@@ -18,12 +22,8 @@
     Relative destination directory in the caller repository.
     Default: .github/workflows
 
-.PARAMETER TargetFileName
-    Destination file name for the copied workflow.
-    Default: docs.yml
-
 .PARAMETER Overwrite
-    Overwrite destination file if it already exists.
+    Overwrite destination files if they already exist.
 
 .EXAMPLE
     ./scripts/setup-docs-workflow.ps1 -CallerProjectDir C:\src\my-docs-repo
@@ -36,16 +36,15 @@
 param(
     [Parameter()][string]$CallerProjectDir = '.',
     [Parameter()][string]$TargetRelativeDir = '.github/workflows',
-    [Parameter()][string]$TargetFileName = 'docs.yml',
     [Parameter()][switch]$Overwrite
 )
 
 $ErrorActionPreference = 'Stop'
 
+$WorkflowTemplates = @('docs-ci.yml', 'docs-deploy.yml')
+
 function Resolve-OrCreateAbsolutePath {
-    param(
-        [Parameter(Mandatory)][string]$Path
-    )
+    param([Parameter(Mandatory)][string]$Path)
 
     if (Test-Path -LiteralPath $Path) {
         return (Resolve-Path -LiteralPath $Path).Path
@@ -55,15 +54,16 @@ function Resolve-OrCreateAbsolutePath {
     return $created.FullName
 }
 
-function Resolve-TemplateWorkflowPath {
+function Resolve-TemplateFile {
     param(
-        [Parameter(Mandatory)][string]$ScriptDirectory
+        [Parameter(Mandatory)][string]$ScriptDirectory,
+        [Parameter(Mandatory)][string]$FileName
     )
 
     $candidates = @(
-        (Join-Path $ScriptDirectory '../template/.github/workflows/docs.yml'),
-        (Join-Path $ScriptDirectory '../../template/.github/workflows/docs.yml'),
-        (Join-Path $ScriptDirectory '../../../template/.github/workflows/docs.yml')
+        (Join-Path $ScriptDirectory "template/$FileName"),
+        (Join-Path $ScriptDirectory "../template/$FileName"),
+        (Join-Path $ScriptDirectory "../scripts/template/$FileName")
     )
 
     foreach ($candidate in $candidates) {
@@ -72,7 +72,7 @@ function Resolve-TemplateWorkflowPath {
         }
     }
 
-    throw "Unable to locate Docs workflow template. Expected template/.github/workflows/docs.yml near script path '$ScriptDirectory'."
+    throw "Unable to locate workflow template '$FileName'. Expected under scripts/template near '$ScriptDirectory'."
 }
 
 $scriptDir = $PSScriptRoot
@@ -83,23 +83,22 @@ if ([string]::IsNullOrWhiteSpace($scriptDir)) {
     $scriptDir = (Get-Location).Path
 }
 
-$sourceWorkflow = Resolve-TemplateWorkflowPath -ScriptDirectory $scriptDir
-
-if (-not (Test-Path -LiteralPath $sourceWorkflow)) {
-    throw "Source workflow not found at '$sourceWorkflow'."
-}
-
 $callerRoot = Resolve-OrCreateAbsolutePath -Path $CallerProjectDir
 $targetDir = Resolve-OrCreateAbsolutePath -Path (Join-Path $callerRoot $TargetRelativeDir)
-$targetPath = Join-Path $targetDir $TargetFileName
 
-if ((Test-Path -LiteralPath $targetPath) -and (-not $Overwrite)) {
-    throw "Destination file already exists: '$targetPath'. Re-run with -Overwrite to replace it."
+foreach ($template in $WorkflowTemplates) {
+    $sourcePath = Resolve-TemplateFile -ScriptDirectory $scriptDir -FileName $template
+    $targetPath = Join-Path $targetDir $template
+
+    if ((Test-Path -LiteralPath $targetPath) -and (-not $Overwrite)) {
+        Write-Host "[SKIP] Exists, not overwriting: $targetPath" -ForegroundColor Yellow
+        continue
+    }
+
+    Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+    Write-Host "[OK] Copied workflow: $targetPath" -ForegroundColor Green
 }
 
-Copy-Item -LiteralPath $sourceWorkflow -Destination $targetPath -Force
-
-Write-Host "[OK] Copied Docs Workflow:" -ForegroundColor Green
-Write-Host "     $targetPath" -ForegroundColor White
 Write-Host ""
-Write-Host "Triggers: pull_request, push (main), workflow_dispatch" -ForegroundColor Cyan
+Write-Host "Both workflows declare workflow_call + workflow_dispatch." -ForegroundColor Cyan
+Write-Host "Call them from your main workflow (uses:) to verify or deploy." -ForegroundColor Cyan

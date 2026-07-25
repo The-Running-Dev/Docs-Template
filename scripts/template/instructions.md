@@ -1,19 +1,24 @@
 # Docs Workflow Installation
 
-This repository provides a full docs workflow template at:
+This repository provides two split docs workflow templates at:
 
-- `template/.github/workflows/docs.yml`
+- `scripts/template/docs-ci.yml` (verify)
+- `scripts/template/docs-deploy.yml` (deploy)
 
-The setup script copies that file directly into caller repositories at:
+The setup script copies both into caller repositories at:
 
-- `.github/workflows/docs.yml`
+- `.github/workflows/docs-ci.yml`
+- `.github/workflows/docs-deploy.yml`
 
 ## Result
 
-After running `scripts/setup-docs-workflow.ps1`, the caller repository has a standalone Docs workflow that triggers on:
+After running `scripts/setup-docs-workflow.ps1`, the caller repository has both
+docs workflows. Each declares `workflow_call` + `workflow_dispatch`, so:
 
-1. Pull requests (docs, workflow, and script changes)
-2. Pushes to `main` (same paths)
-3. Manual dispatch
+1. The caller's **main** workflow drives them (verify vs deploy) via `uses:`.
+2. Each is runnable manually from the Actions tab / `gh workflow run`.
 
-No reusable workflow wiring is required.
+Neither workflow runs on push or pull_request directly. Both run their steps
+inside the published base image (`container:`), overlay the caller's `./docs`
+over `/template`, and build via `scripts/docs-build.ps1`. Existing workflow files
+are left untouched unless `-Overwrite` is passed.
