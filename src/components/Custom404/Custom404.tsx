@@ -49,8 +49,9 @@ export interface Custom404ComponentProps {
    * Defaults to none. Only "/" is guaranteed to exist on every site built
    * from this template: a consumer may serve docs from the site root
    * (`routeBasePath: '/'`) or disable the pages plugin, so routes such as
-   * `/docs` and `/demos` cannot be assumed. Passing a route that does not
-   * resolve fails the consumer's build under `onBrokenLinks: 'throw'`.
+   * `/docs` and `/demos` cannot be assumed. A route that does not resolve
+   * warns during the build, and fails it outright on a site that sets
+   * `onBrokenLinks: 'throw'`.
    */
   links?: Custom404Link[];
 }
@@ -59,12 +60,13 @@ export interface Custom404ComponentProps {
  * Reusable 404 Error Component
  * Because getting lost should be fun! 🎪
  *
- * This component contains the shared 404 logic and UI that can be used
- * by both the theme NotFound component and the pages 404 component.
+ * This component holds the shared 404 logic and UI. It is rendered through the
+ * `src/theme/NotFound/Content` swizzle, which is what Docusaurus uses for every
+ * 404 on the site — docs routes, page routes, and anything else that misses.
  */
 export default function Custom404Component({
   links = []
-}: Custom404ComponentProps = {}): React.JSX.Element {
+}: Custom404ComponentProps): React.JSX.Element {
   const [excuse, setExcuse] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [catFact, setCatFact] = useState('');

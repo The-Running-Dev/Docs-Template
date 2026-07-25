@@ -56,11 +56,12 @@ The custom 404 page replaces the default Docusaurus error page with an interacti
 ## 📁 File Structure
 
 ```text
-src/pages/
-└── 404.tsx                 # Custom 404 page component
+src/components/Custom404/
+├── Custom404.tsx           # Shared 404 component (all the logic and UI)
+└── index.ts                # Public exports, including the link types
 
-src/theme/NotFound/
-└── index.tsx               # Docusaurus NotFound component override
+src/theme/NotFound/Content/
+└── index.tsx               # Docusaurus NotFound override; renders Custom404
 ```
 
 ## 🔧 Technical Implementation
@@ -73,28 +74,31 @@ The 404 system uses a modern reusable component architecture:
 // Reusable core component (v1.0)
 export default function Custom404Component({
   links = []
-}: Custom404ComponentProps = {}): React.JSX.Element {
+}: Custom404ComponentProps): React.JSX.Element {
   const [excuse, setExcuse] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [catFact, setCatFact] = useState('');
 
-  // Auto-rotating excuse system (enhanced)
+  // Only links that named themselves in prose belong in the call to action
+  const describedLinks = links.filter((link) => link.description);
+
+  // Auto-rotating excuse system (EXCUSES is module-scoped, so no deps needed)
   useEffect(() => {
     const interval = setInterval(() => {
-      setExcuse((prev) => (prev + 1) % excuses.length);
+      setExcuse((prev) => (prev + 1) % EXCUSES.length);
     }, 3000);
     return () => clearInterval(interval);
-  }, [excuses.length]);
+  }, []);
 
   // Random cat fact initialization
   useEffect(() => {
-    setCatFact(catFacts[Math.floor(Math.random() * catFacts.length)]);
+    setCatFact(CAT_FACTS[Math.floor(Math.random() * CAT_FACTS.length)]);
   }, []);
 
   const handleSpinClick = () => {
     setIsSpinning(true);
     setTimeout(() => setIsSpinning(false), 1000);
-    setCatFact(catFacts[Math.floor(Math.random() * catFacts.length)]);
+    setCatFact(CAT_FACTS[Math.floor(Math.random() * CAT_FACTS.length)]);
   };
 
   // Enhanced render logic with accessibility
@@ -144,7 +148,7 @@ export default function ContentWrapper(): ReactNode {
 
 This architecture provides:
 
-- **Reusability**: Same component used in pages and theme
+- **Reusability**: One component, usable anywhere a 404 body is needed
 - **Global Coverage**: Handles ALL 404s through theme integration
 - **Component Isolation**: Separated logic from presentation
 
@@ -204,20 +208,25 @@ Divided into two categories:
 
 The 404 page integrates with Docusaurus through:
 
-1. **File-based Routing**: Located at `src/pages/404.tsx`
-2. **Layout Component**: Uses `@theme/Layout` for consistent styling
+1. **Theme Override**: Swizzled at `src/theme/NotFound/Content`, which Docusaurus
+   renders for every 404 — docs routes, page routes, and anything else that misses
+2. **Layout**: Supplied by the theme's own `NotFound` wrapper upstream, so the
+   component itself renders only the page body
 3. **Link Component**: Uses `@docusaurus/Link` for internal navigation
-4. **Theme Integration**: Respects site's CSS custom properties
+4. **Theme Integration**: Respects the site's CSS custom properties
 
 ### NotFound Override
 
-The `src/theme/NotFound/index.tsx` provides the same functionality for Docusaurus's built-in 404 handling.
+`src/theme/NotFound/Content/index.tsx` is the single entry point. It renders
+`Custom404` and deliberately passes no `links` — see
+[Navigation destinations](#navigation-destinations) for why, and for how to add
+your own.
 
 ## 📊 Analytics Integration
 
 The page includes engagement opportunities:
 
-- Links to demos and documentation
+- Links to whatever destinations the site configures via `links`
 - Call-to-action for exploring the site
 - Fake but entertaining statistics that could be replaced with real analytics
 
@@ -225,9 +234,9 @@ The page includes engagement opportunities:
 
 ### Easy Modifications
 
-1. **Add New Excuses**: Extend the `excuses` array
+1. **Add New Excuses**: Extend the `EXCUSES` array
 2. **Change Animation Timing**: Modify `useEffect` intervals
-3. **Update Cat Facts**: Replace or extend the `catFacts` array
+3. **Update Cat Facts**: Replace or extend the `CAT_FACTS` array
 4. **Modify Statistics**: Change the random number generators
 5. **Customize Colors**: Update the gradient in the rainbow animation
 
@@ -269,15 +278,21 @@ The page uses CSS custom properties for easy theming:
 
 ## 📝 Usage Example
 
-```tsx
-// The 404 page is automatically used by Docusaurus
-// No manual integration required - just place at src/pages/404.tsx
+Docusaurus routes every 404 through the `src/theme/NotFound/Content` override
+automatically — no wiring required.
 
-// For manual usage in other routes:
-import Custom404Page from '@site/src/pages/404';
+To render the same component elsewhere, import it directly and pass the routes
+your site actually has:
+
+```tsx
+import Custom404, { type Custom404Link } from '@site/src/components/Custom404';
+
+const links: Custom404Link[] = [
+  { to: '/docs', label: '📚 Read Docs', description: 'documentation' }
+];
 
 export default function SomeErrorPage() {
-  return <Custom404Page />;
+  return <Custom404 links={links} />;
 }
 ```
 
@@ -288,6 +303,7 @@ The 404 page requires no configuration but can be customized through:
 1. **Content Arrays**: Modify excuses and cat facts
 2. **Timing Values**: Change animation and rotation intervals
 3. **Styling**: Update CSS custom properties in your theme
-4. **Navigation Links**: Modify the emergency navigation buttons
+4. **Navigation Links**: Pass a `links` array — see
+   [Navigation destinations](#navigation-destinations)
 
 This 404 page transforms a negative user experience into an opportunity for brand engagement, demonstrating attention to detail and user experience throughout the entire site.
