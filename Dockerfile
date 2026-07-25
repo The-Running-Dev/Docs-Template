@@ -52,6 +52,12 @@ COPY . ./
 # their own docs without inherited sample content.
 RUN Remove-Item -Recurse -Force /template/docs -ErrorAction SilentlyContinue
 
+# Link this image to its source repository so GHCR lists it under the repo's
+# Packages and inherits repo visibility/permissions.
+LABEL org.opencontainers.image.source="https://github.com/The-Running-Dev/Docusaurus-Template"
+LABEL org.opencontainers.image.description="Docusaurus documentation template base image"
+LABEL org.opencontainers.image.licenses="MIT"
+
 # Expose port 3000
 EXPOSE 3000
 
