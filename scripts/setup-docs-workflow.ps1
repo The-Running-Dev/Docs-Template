@@ -33,10 +33,10 @@
     Overwrite destination file if it already exists.
 
 .EXAMPLE
-    ./scripts/setup-common-workflow.ps1 -CallerProjectDir C:\src\my-docs-repo
+    ./scripts/setup-docs-workflow.ps1 -CallerProjectDir C:\src\my-docs-repo
 
 .EXAMPLE
-    ./scripts/setup-common-workflow.ps1 -Overwrite
+    ./scripts/setup-docs-workflow.ps1 -Overwrite
 #>
 
 [CmdletBinding()]
@@ -62,16 +62,41 @@ function Resolve-OrCreateAbsolutePath {
     return $created.FullName
 }
 
+function Resolve-TemplateRoot {
+    param(
+        [Parameter(Mandatory)][string]$StartPath
+    )
+
+    $current = $StartPath
+    for ($i = 0; $i -lt 8; $i++) {
+        $workflowPath = Join-Path $current 'template/.github/workflow/docs.yml'
+        $instructionsPath = Join-Path $current 'template/instructions.md'
+
+        if ((Test-Path -LiteralPath $workflowPath) -and (Test-Path -LiteralPath $instructionsPath)) {
+            return $current
+        }
+
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) {
+            break
+        }
+
+        $current = $parent
+    }
+
+    throw "Unable to locate the template root. Expected template/.github/workflow/docs.yml and template/instructions.md in an ancestor directory of $StartPath."
+}
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$templateRoot = Split-Path -Parent $scriptDir
+$templateRoot = Resolve-TemplateRoot -StartPath $scriptDir
 $sourceWorkflow = Join-Path $templateRoot 'template/.github/workflow/docs.yml'
 $sourceInstructions = Join-Path $templateRoot 'template/instructions.md'
 
 if (-not (Test-Path -LiteralPath $sourceWorkflow)) {
-    throw "Source workflow not found at $sourceWorkflow"
+    throw "Source Workflow not Found at $sourceWorkflow"
 }
 if (-not (Test-Path -LiteralPath $sourceInstructions)) {
-    throw "Source instructions not found at $sourceInstructions"
+    throw "Source Instructions not Found at $sourceInstructions"
 }
 
 $callerRoot = Resolve-OrCreateAbsolutePath -Path $CallerProjectDir
@@ -79,12 +104,12 @@ $targetDir = Resolve-OrCreateAbsolutePath -Path (Join-Path $callerRoot $TargetRe
 $targetPath = Join-Path $targetDir $TargetFileName
 
 if ((Test-Path -LiteralPath $targetPath) -and (-not $Overwrite)) {
-    throw "Destination file already exists: $targetPath. Re-run with -Overwrite to replace it."
+    throw "Destination File Already Exists: $targetPath. Re-run with -Overwrite to Replace It."
 }
 
 Copy-Item -LiteralPath $sourceWorkflow -Destination $targetPath -Force
 
-Write-Host "[OK] Copied reusable workflow:" -ForegroundColor Green
+Write-Host "[OK] Copied Reusable Workflow:" -ForegroundColor Green
 Write-Host "     $targetPath" -ForegroundColor White
 Write-Host ""
 

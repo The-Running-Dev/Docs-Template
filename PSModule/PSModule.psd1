@@ -2,7 +2,7 @@
     Id = 'repository.docusaurustemplate'
     GeneratedBy = 'SubZeroDev.ContainerPSGenerator'
     ModuleName = 'DocusaurusTemplate'
-    ModuleVersion = '2026.07.25'
+    ModuleVersion = '0.1.0'
     ContainerImage = 'DocusaurusTemplate'
     Commands = @(
 @{
@@ -94,6 +94,40 @@
                     Type = 'String'
                     Mandatory = $false
                     Description = 'Discovered from BaseImage.'
+                }
+            )
+        }
+@{
+            Id = 'script.scripts.setup-docs-workflow'
+            Name = 'Invoke-SetupWorkflow'
+            Synopsis = 'Runs the discovered PowerShell script ''scripts/setup-docs-workflow.ps1''.'
+            Description = 'Scaffolded from ''scripts/setup-docs-workflow.ps1''. Review its container invocation mappings before publishing.'
+            SourcePath = 'scripts/setup-docs-workflow.ps1'
+            SourceKind = 'Script'
+            Parameters = @(
+@{
+                    Name = 'CallerProjectDir'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from CallerProjectDir.'
+                }
+@{
+                    Name = 'TargetRelativeDir'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from TargetRelativeDir.'
+                }
+@{
+                    Name = 'TargetFileName'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from TargetFileName.'
+                }
+@{
+                    Name = 'Overwrite'
+                    Type = 'switch'
+                    Mandatory = $false
+                    Description = 'Discovered from Overwrite.'
                 }
             )
         }
