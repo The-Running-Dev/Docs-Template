@@ -1,96 +1,100 @@
+#!/usr/bin/env pwsh
+
 <#
 .SYNOPSIS
-    Build and run the Docusaurus docs site from docs/ using docs/Dockerfile.
+    Run the docs-template image locally with live hot-reload from ./docs.
 
 .DESCRIPTION
-    The image extends the base docs-template (ghcr.io/the-running-dev/docs-template)
-    and overlays the docs/ build context — our docusaurus.config.ts, sidebar.ts, and
-    the markdown under docs/docs — over /template (Dockerfile `COPY . .`). That overlay
-    is what overwrites the base image's default config and sidebar with the local ones.
+    This is a run-only helper for local development. It does NOT build anything —
+    the static site build happens in CI via scripts/docs-build.ps1 inside the
+    published base image.
 
-.PARAMETER Live
-    Bind-mount docs/ over the running container so editing markdown or config
-    hot-reloads in the browser without rebuilding. Omit for a baked run (the image
-    is self-contained; re-run this script to pick up edits).
+    It runs the base image and bind-mounts the caller's local docs overlay over
+    /template so edits hot-reload in the browser:
 
-.PARAMETER BuildOnly
-    Build the image and stop; do not run a container.
+        ./docs/docs                  -> /template/docs
+        ./docs/docusaurus.config.ts  -> /template/docusaurus.config.ts  (if present)
+        ./docs/sidebar.ts            -> /template/sidebar.ts            (if present)
+
+    The image's default command (pnpm run start:docker) serves the site on
+    0.0.0.0:3000 with hot reload.
 
 .PARAMETER Port
     Host port to publish (container serves on 3000). Default 3000.
 
 .PARAMETER Tag
-    Image tag to build. Default 'gameoflife-docs'.
+    Image to run. Defaults to the published base image. If the image is not
+    present locally it is pulled.
 
-.PARAMETER BaseImage
-    Base image passed as the Dockerfile BASE_IMAGE build-arg.
+.PARAMETER ProjectDir
+    Project directory containing ./docs. Defaults to the current directory.
 
 .EXAMPLE
-    ./scripts/docs.ps1         # build, run baked, serve http://localhost:3000/docs
+    ./scripts/docs.ps1          # serve http://localhost:3000/docs with hot reload
 .EXAMPLE
-    ./scripts/docs.ps1 -Live   # build, run with hot-reload from docs/
-.EXAMPLE
-    ./scripts/docs.ps1 -BuildOnly  # just build the image
+    ./scripts/docs.ps1 -Port 8080
 #>
+
 [CmdletBinding()]
 param(
-    [switch]$Live,
-    [switch]$BuildOnly,
-    [int]$Port = 3000,
-    [string]$Tag = 'gameoflife-docs',
-    [string]$BaseImage = 'ghcr.io/the-running-dev/docs-template:latest'
+    [Parameter()][int]$Port = 3000,
+    [Parameter()][string]$Tag = 'ghcr.io/the-running-dev/docs-template:latest',
+    [Parameter()][string]$ProjectDir = '.'
 )
 
 $ErrorActionPreference = 'Stop'
 
-# docs/ is both the Docker build context and the Docusaurus overlay.
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$root = Split-Path -Parent $scriptDir
-$context = Join-Path $root 'docs'
-$dockerfile = Join-Path $context 'Dockerfile'
-
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    throw "docker not found on PATH. Install/launch Docker Desktop first."
-}
-if (-not (Test-Path $dockerfile)) {
-    throw "Dockerfile not found at $dockerfile"
+    throw 'docker not found on PATH. Install/launch Docker Desktop first.'
 }
 
-Write-Host "Building '$Tag' from $context (base: $BaseImage) ..." -ForegroundColor Cyan
-docker build --build-arg "BASE_IMAGE=$BaseImage" -f $dockerfile -t $Tag $context
-if ($LASTEXITCODE -ne 0) { throw "docker build failed (exit $LASTEXITCODE)" }
-
-if ($BuildOnly) {
-    Write-Host "Built '$Tag'. (build-only)" -ForegroundColor Green
-    return
+if (-not (Test-Path -LiteralPath $ProjectDir)) {
+    throw "Project directory not found at '$ProjectDir'."
 }
 
-# Docker Desktop wants forward-slash absolute paths for bind mounts.
-$ctx = ($context -replace '\\', '/')
+$root = (Resolve-Path -LiteralPath $ProjectDir).Path
+$docsDir = Join-Path $root 'docs'
+
+if (-not (Test-Path -LiteralPath $docsDir)) {
+    throw "No docs/ directory at '$docsDir'. Run scripts/setup-docs.ps1 first to scaffold it."
+}
+
+# Ensure the image exists locally; pull it if not.
+& docker image inspect $Tag *> $null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[DOCS] Image '$Tag' not found locally. Pulling ..." -ForegroundColor Yellow
+    & docker pull $Tag
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to pull image '$Tag'. Log in to the registry or pass a local -Tag."
+    }
+}
+
+# Docker wants forward-slash absolute paths for bind mounts.
+$docsHost = ($docsDir -replace '\\', '/')
 
 $runArgs = @('run', '--rm', '-it', '-p', "${Port}:3000")
 
-if ($Live) {
-    Write-Host "Live mode: editing docs/ hot-reloads (bind-mounted over /template)." -ForegroundColor Yellow
-    $runArgs += @('-v', "${ctx}/docs:/template/docs")
+# docs/ content is always overlaid for hot reload.
+$docsContent = Join-Path $docsDir 'docs'
+if (Test-Path -LiteralPath $docsContent) {
+    $runArgs += @('-v', "${docsHost}/docs:/template/docs")
+}
+else {
+    Write-Host "[DOCS] Note: '$docsContent' not found; serving without a docs/ overlay." -ForegroundColor Yellow
+}
 
-    $docusaurusConfig = Join-Path $context 'docusaurus.config.ts'
-    if (Test-Path -LiteralPath $docusaurusConfig) {
-        $runArgs += @('-v', "${ctx}/docusaurus.config.ts:/template/docusaurus.config.ts")
-    }
+# Optional config + sidebar overrides.
+$docusaurusConfig = Join-Path $docsDir 'docusaurus.config.ts'
+if (Test-Path -LiteralPath $docusaurusConfig) {
+    $runArgs += @('-v', "${docsHost}/docusaurus.config.ts:/template/docusaurus.config.ts")
+}
 
-    $sidebarTs = Join-Path $context 'sidebar.ts'
-    $sidebarsTs = Join-Path $root 'sidebars.ts'
-    if (Test-Path -LiteralPath $sidebarTs) {
-        $runArgs += @('-v', "${ctx}/sidebar.ts:/template/sidebar.ts")
-    }
-    elseif (Test-Path -LiteralPath $sidebarsTs) {
-        $sidebarsHost = ((Resolve-Path -LiteralPath $sidebarsTs).Path -replace '\\', '/')
-        $runArgs += @('-v', "${sidebarsHost}:/template/sidebars.ts")
-    }
+$sidebarTs = Join-Path $docsDir 'sidebar.ts'
+if (Test-Path -LiteralPath $sidebarTs) {
+    $runArgs += @('-v', "${docsHost}/sidebar.ts:/template/sidebar.ts")
 }
 
 $runArgs += $Tag
 
-Write-Host "Serving at http://localhost:$Port/docs  (Ctrl+C to stop)" -ForegroundColor Green
-docker @runArgs
+Write-Host "[DOCS] Serving at http://localhost:$Port/docs  (Ctrl+C to stop)" -ForegroundColor Green
+& docker @runArgs

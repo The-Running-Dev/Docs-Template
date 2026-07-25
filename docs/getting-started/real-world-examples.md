@@ -8,9 +8,8 @@ This section showcases how the Docusaurus Template is used in actual production 
 
 ## Which Script to Use
 
-- Use `./scripts/setup-docs.ps1` when you want to initialize a docs folder in a project.
-- Use `./scripts/setup-docs.ps1 -DockerDocs -Live` when you want setup plus local Docker docs serving in one command.
-- Use `./scripts/docs.ps1` when you only want the dedicated Docker docs build/run workflow.
+- Use `./scripts/setup-docs.ps1` when you want to scaffold a docs overlay and install the CI/deploy workflows in a project.
+- Use `./scripts/docs.ps1` when you want to preview the docs locally with hot reload (runs the base image, no build).
 
 ## Docker Build Agent Integration
 
