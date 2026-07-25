@@ -48,7 +48,7 @@
 
 ## Template Bootstrap
 
-- To initialize another copy of this template, copy the repo to a new folder, run `pnpm install`, then run `.\\template-setup.ps1` once to create the docs scaffold.
+- To initialize another copy of this template, copy the repo to a new folder, run `pnpm install`, then run `.\\scripts\\setup-docs.ps1` once to create the docs scaffold.
 - For the usual development flow, run `.\\template-build.ps1` from the project root; it installs dependencies, runs pre-build, and starts the dev server.
 - If you only need the standard manual path, run `pnpm run prebuild:prod` followed by `pnpm start`.
 

@@ -7,7 +7,8 @@ FROM ${BASE_IMAGE}
 
 WORKDIR /template
 
-# Copy local files over the base image.
+# Copy local files over the base image so project-specific files override the
+# image contents where paths overlap.
 COPY . .
 
 # Reinstall after copy so local package/lockfile changes fully replace the

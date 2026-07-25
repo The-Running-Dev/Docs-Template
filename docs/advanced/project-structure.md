@@ -9,9 +9,9 @@ sidebar_position: 1
 ├── sidebars.ts                     # Sidebar navigation structure
 ├── readme-config.json              # (Optional) README processing configuration for advanced setups
 ├── .copy.ignore.example            # File ignore patterns for copying
-├── template-setup.ps1              # Initial configuration script
 ├── template-build.ps1              # Development server launcher (with full docs)
 ├── scripts/
+│   ├── setup-docs.ps1             # Canonical setup script for new template copies
 │   └── pre-build.ts               # Pre-build tasks: markdown copy, navbar generation, versioning
 ├── src/
 │   ├── components/

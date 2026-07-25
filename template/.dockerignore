@@ -1,0 +1,3 @@
+# Build-context hygiene: these don't belong inside the image overlay.
+Dockerfile
+.dockerignore

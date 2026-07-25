@@ -6,6 +6,12 @@ sidebar_position: 4
 
 This section showcases how the Docusaurus Template is used in actual production environments, including automated deployment scenarios and integration with CI/CD pipelines.
 
+## Which Script to Use
+
+- Use `./scripts/setup-docs.ps1` when you want to initialize a docs folder in a project.
+- Use `./scripts/setup-docs.ps1 -DockerDocs -Live` when you want setup plus local Docker docs serving in one command.
+- Use `./scripts/docs.ps1` when you only want the dedicated Docker docs build/run workflow.
+
 ## Docker Build Agent Integration
 
 One of the most powerful use cases for this template is integration with containerized build environments. Here's how the template is deployed for the **Docker Build Agent** project using an automated PowerShell script.
@@ -20,7 +26,7 @@ The Docker Build Agent project uses this template to generate documentation dyna
 
 ### The Deployment Script
 
-The following script (`docs.ps1`) shows a complete real-world implementation:
+The following script (`scripts/docs.ps1`) shows a complete real-world implementation:
 
 ```powershell
 #!/usr/bin/env pwsh
@@ -39,7 +45,7 @@ The following script (`docs.ps1`) shows a complete real-world implementation:
        server with hot-reload capabilities
 
 .EXAMPLE
-    .\docs.ps1
+    .\scripts\docs.ps1
 
     Builds the documentation and starts a development server at http://localhost:3000
 
@@ -153,7 +159,7 @@ Start-Process pwsh -ArgumentList "-NoExit", "-Command", $command
 
 #### 🚀 **Automated Workflow**
 
-- Single command execution: `.\docs.ps1`
+- Single command execution: `.\scripts\docs.ps1`
 - No manual template copying or configuration
 - Integrated dependency management
 

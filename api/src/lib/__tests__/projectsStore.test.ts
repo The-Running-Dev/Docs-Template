@@ -8,7 +8,7 @@ import {
   getProject,
   saveProject,
   deleteProject
-} from './projectsStore';
+} from '../projectsStore';
 
 // Mock fs module
 vi.mock('node:fs');

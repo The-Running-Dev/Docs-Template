@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Fastify from 'fastify';
-import { registerSyncRoutes } from './syncRoutes';
-import { resetContainer } from '../lib/di/index';
-import { SERVICE_TOKENS } from '../lib/di/tokens';
+import { registerSyncRoutes } from '../syncRoutes';
+import { resetContainer } from '../../lib/di/index';
+import { SERVICE_TOKENS } from '../../lib/di/tokens';
 
 async function createApp() {
   resetContainer();
 
   // Register mock services
-  const { container } = await import('../lib/di/container');
+  const { container } = await import('../../lib/di/container');
 
   // Mock IConfigService
   const mockConfig = {

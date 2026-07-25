@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GitHubRepoProvider } from './githubProvider';
-import { IConfigService } from '../repositories/interfaces';
+import { GitHubRepoProvider } from '../githubProvider';
+import type { IConfigService } from '../../repositories/interfaces';
 
 // Mock Octokit
 const mockOctokit = {
@@ -126,7 +126,9 @@ describe('GitHubRepoProvider', () => {
     mockOctokit.repos.get.mockResolvedValue(mockRepoData);
     mockOctokit.repos.listCommits.mockResolvedValue(mockCommitData);
 
-    const stats = await provider.getRepoStats('https://github.com/user/no-lang-repo');
+    const stats = await provider.getRepoStats(
+      'https://github.com/user/no-lang-repo'
+    );
 
     expect(stats.language).toBe('unknown');
   });
@@ -149,7 +151,9 @@ describe('GitHubRepoProvider', () => {
     mockOctokit.repos.get.mockResolvedValue(mockRepoData);
     mockOctokit.repos.listCommits.mockResolvedValue(mockCommitData);
 
-    const stats = await provider.getRepoStats('https://github.com/user/empty-repo');
+    const stats = await provider.getRepoStats(
+      'https://github.com/user/empty-repo'
+    );
 
     expect(stats.lastCommit).toBeInstanceOf(Date);
     expect(stats.stars).toBe(0);
@@ -186,7 +190,7 @@ describe('GitHubRepoProvider', () => {
     mockOctokit.repos.listCommits.mockResolvedValue(mockCommitData);
 
     const start = Date.now();
-    
+
     // Make two rapid calls
     await Promise.all([
       provider.getRepoStats('https://github.com/user/repo1'),
@@ -194,7 +198,7 @@ describe('GitHubRepoProvider', () => {
     ]);
 
     const elapsed = Date.now() - start;
-    
+
     // Should take at least 1000ms due to rate limiting
     expect(elapsed).toBeGreaterThanOrEqual(1000);
   });

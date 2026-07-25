@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { FileCacheService } from './cacheService';
+import { FileCacheService } from '../cacheService';
 import fs from 'node:fs';
 import path from 'node:path';
 
 // Mock the DI container
-vi.mock('../lib/di/index', () => ({
+vi.mock('../../lib/di/index', () => ({
   getService: vi.fn(() => ({
     getAll: async () => [
       {

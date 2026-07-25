@@ -4,36 +4,74 @@ title: Automation
 sidebar_position: 3
 ---
 
-The template includes two PowerShell scripts to streamline the development workflow:
+The template includes setup and development PowerShell scripts to streamline the workflow:
 
-### `template-setup.ps1` - Template Configuration
+## `scripts/setup-docs.ps1` - Template Configuration
 
-Sets up badge configuration and handles any remaining template files.
+Creates a baseline docs scaffold and prepares a copied template for first use.
 
 **Usage:**
 
 ```powershell
 # Run from template directory
-.\template-setup.ps1
+.\scripts\setup-docs.ps1
 
 # Or specify a different project directory
-.\template-setup.ps1 -projectDir "C:\path\to\project"
+.\scripts\setup-docs.ps1 -ProjectDir "C:\path\to\project"
+
+# Setup + Docker docs build/run workflow
+.\scripts\setup-docs.ps1 -DockerDocs -Live
 ```
 
 **What it does:**
 
-- Sets up static configuration files for badges and Giscus comments
-- Processes any remaining `.example` files in the project
-- Cleans up template files after successful setup
+- Creates `docs/` when missing
+- Creates `docs/index.md` when missing
+- Seeds `docs/index.md` from root `README.md` or `readme.md` when available
+- Creates `docs/Dockerfile` when missing so Docker-based local serving works
+- Supports setup in any target folder via `-ProjectDir`
+- Optionally runs Docker docs image build/run (`-DockerDocs`, `-Live`, `-BuildOnly`)
 - Provides colored console output for progress tracking
 
 **Perfect for:**
 
-- Setting up static configuration for your project
-- Final template cleanup after customization
-- Ensuring all configuration files are properly set up
+- Initializing a fresh copy of the template
+- Bootstrapping docs folders in another repository
+- Running a consistent setup step in local or CI workflows
 
-### `template-build.ps1` - Development Server Launcher
+## `scripts/docs.ps1` - Docker Docs Build/Run
+
+Builds and runs docs from `docs/` using `docs/Dockerfile`.
+
+**Usage:**
+
+```powershell
+# Build and run docs image
+.\scripts\docs.ps1
+
+# Build and run with live mounts
+.\scripts\docs.ps1 -Live
+
+# Build image only
+.\scripts\docs.ps1 -BuildOnly
+```
+
+## `scripts/setup-docs-workflow.ps1` - Docs Workflow Installer
+
+Copies the full Docs workflow from `template/.github/workflows/docs.yml`
+into a caller repository at `.github/workflows/docs.yml`.
+
+**Usage:**
+
+```powershell
+# Copy docs workflow to a caller repository
+.\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller"
+
+# Overwrite existing target file
+.\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller" -Overwrite
+```
+
+## `template-build.ps1` - Development Server Launcher
 
 **⚠️ Note:** This script has been simplified and now runs the development server directly in the current terminal rather than a separate window.
 

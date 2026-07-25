@@ -7,8 +7,8 @@
     Skip Docker template setup and go directly to development server.
 
 .EXAMPLE
-    .\docs.ps1                      # Full setup with Docker
-    .\docs.ps1 -SkipTemplateSetup   # Skip Docker, just start dev server
+    .\scripts\docs.ps1                      # Full setup with Docker
+    .\scripts\docs.ps1 -SkipTemplateSetup   # Skip Docker, just start dev server
 #>
 param(
     [string]$appDir = '.',

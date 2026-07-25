@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ConfigService } from './configService';
+import { ConfigService } from '../configService';
 
 describe('ConfigService', () => {
   let originalEnv: Record<string, string | undefined>;
