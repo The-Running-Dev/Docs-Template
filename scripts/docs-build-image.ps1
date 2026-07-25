@@ -10,9 +10,8 @@
     and can push it to a container registry, which creates/updates the registry
     package.
 
-    This is an explicit, portable alternative to the build-agent's internal
-    `build docker` command used in release.yml — it can be run locally or in any
-    CI without the build-agent image.
+    This is the explicit, portable mechanism release.yml uses to version, build,
+    and publish the image, and it can also be run locally or in any CI.
 
 .PARAMETER Tag
     Primary image reference to build. Default the published base image at :latest.
@@ -44,15 +43,15 @@
 
 .EXAMPLE
     # Build only
-    ./scripts/image-build.ps1
+    ./scripts/docs-build-image.ps1
 
 .EXAMPLE
     # Build and push :latest to GHCR (already logged in)
-    ./scripts/image-build.ps1 -Push
+    ./scripts/docs-build-image.ps1 -Push
 
 .EXAMPLE
     # Build, tag a dated version, log in, and push both
-    ./scripts/image-build.ps1 -AdditionalTags ghcr.io/the-running-dev/docs-template:2026.07.25 `
+    ./scripts/docs-build-image.ps1 -AdditionalTags ghcr.io/the-running-dev/docs-template:2026.07.25 `
         -Push -Username $env:GITHUB_ACTOR -Token $env:REGISTRY_TOKEN
 #>
 

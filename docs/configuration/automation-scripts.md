@@ -59,24 +59,25 @@ Runs **inside** the base image (used by the CI workflows). Overlays `./docs` ove
 `/template`, runs `pnpm run build`, and copies the static site to the output
 path. Not typically run by hand.
 
-## `scripts/image-build.ps1` - Build & Publish the Base Image
+## `scripts/docs-build-image.ps1` - Build & Publish the Base Image
 
 Builds the base `docs-template` image from the repository-root `Dockerfile` (the
 image the docs workflows run inside) and optionally pushes it to a registry,
-which creates/updates the registry package. Explicit, portable alternative to
-the build-agent's internal `build docker` command.
+which creates/updates the registry package. This is the mechanism `release.yml`
+uses to version, build, and publish the image on release, and it can also be run
+locally.
 
 **Usage:**
 
 ```powershell
 # Build only (no push)
-.\scripts\image-build.ps1
+.\scripts\docs-build-image.ps1
 
 # Build and push :latest to GHCR (already logged in via docker login)
-.\scripts\image-build.ps1 -Push
+.\scripts\docs-build-image.ps1 -Push
 
 # Build, add a dated version tag, log in, and push both tags
-.\scripts\image-build.ps1 `
+.\scripts\docs-build-image.ps1 `
   -AdditionalTags ghcr.io/the-running-dev/docs-template:2026.07.25 `
   -Push -Username $env:GITHUB_ACTOR -Token $env:REGISTRY_TOKEN
 ```
