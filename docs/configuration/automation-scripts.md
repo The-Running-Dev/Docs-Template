@@ -28,6 +28,7 @@ Creates a baseline docs scaffold and prepares a copied template for first use.
 - Creates `docs/` when missing
 - Creates `docs/index.md` when missing
 - Seeds `docs/index.md` from root `README.md` or `readme.md` when available
+- Creates `docs/Dockerfile` when missing so Docker-based local serving works
 - Supports setup in any target folder via `-ProjectDir`
 - Optionally runs Docker docs image build/run (`-DockerDocs`, `-Live`, `-BuildOnly`)
 - Provides colored console output for progress tracking

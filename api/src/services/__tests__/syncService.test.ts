@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SyncService } from '../syncService';
-import {
+import type {
   IProjectRepository,
   IRepoProvider,
   ICacheService,
   IConfigService,
   FlatProject
-} from '../repositories/interfaces';
+} from '../../repositories/interfaces';
 
 // Mock node-cron
 

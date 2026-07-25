@@ -1,4 +1,4 @@
-import type {Config} from '@docusaurus/types';
+import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 /**
@@ -17,32 +17,37 @@ const config: Config = {
   onBrokenLinks: 'warn',
   markdown: {
     hooks: {
-      onBrokenMarkdownLinks: 'warn',
-    },
+      onBrokenMarkdownLinks: 'warn'
+    }
   },
-  i18n: {defaultLocale: 'en', locales: ['en']},
+  i18n: { defaultLocale: 'en', locales: ['en'] },
   presets: [
     [
       'classic',
       {
         docs: {
           sidebarPath: './sidebar.ts',
-          routeBasePath: 'docs',
+          routeBasePath: 'docs'
         },
-        blog: false,
-      } satisfies Preset.Options,
-    ],
+        blog: false
+      } satisfies Preset.Options
+    ]
   ],
 
   themeConfig: {
     navbar: {
       title: '',
       items: [
-        {type: 'docSidebar', sidebarId: 'docs', position: 'left', label: 'Docs'},
-      ],
+        {
+          type: 'docSidebar',
+          sidebarId: 'docs',
+          position: 'left',
+          label: 'Docs'
+        }
+      ]
     },
-    footer: {style: 'dark', links: []},
-  } satisfies Preset.ThemeConfig,
+    footer: { style: 'dark', links: [] }
+  } satisfies Preset.ThemeConfig
 };
 
 export default config;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GitHubRepoProvider } from '../githubProvider';
-import { IConfigService } from '../repositories/interfaces';
+import type { IConfigService } from '../../repositories/interfaces';
 
 // Mock Octokit
 const mockOctokit = {

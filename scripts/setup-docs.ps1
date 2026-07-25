@@ -11,6 +11,7 @@
     - Creates docs/ when missing
     - Creates docs/index.md when missing
     - If a root README.md/readme.md exists, uses that content for docs/index.md
+    - Creates docs/Dockerfile when missing
 
     Optional Docker behavior (from docs.ps1 workflow):
     - Builds docs image from docs/Dockerfile
@@ -23,10 +24,11 @@
     Build/run docs Docker workflow after setup.
 
 .PARAMETER Live
-    When used with -DockerDocs, bind-mount docs/config files for hot reload.
+    Builds and runs the Docker docs workflow with docs/config files bind-mounted
+    for hot reload. Implies -DockerDocs.
 
 .PARAMETER BuildOnly
-    When used with -DockerDocs, build image only and do not run it.
+    Builds the Docker docs image without running it. Implies -DockerDocs.
 
 .PARAMETER Port
     Host port for Docker docs server (container uses 3000).
@@ -77,6 +79,7 @@ function Resolve-AbsolutePath {
 $projectPath = Resolve-AbsolutePath -Path $ProjectDir
 $docsDir = Join-Path $projectPath 'docs'
 $indexFile = Join-Path $docsDir 'index.md'
+$dockerfile = Join-Path $docsDir 'Dockerfile'
 $readmeCandidates = @(
     (Join-Path $projectPath 'README.md'),
     (Join-Path $projectPath 'readme.md')
@@ -107,14 +110,30 @@ title: Home
     }
 }
 
+if (-not (Test-Path -LiteralPath $dockerfile)) {
+    Write-Host "[SETUP] Creating docs/Dockerfile..." -ForegroundColor Yellow
+    Set-Content -LiteralPath $dockerfile -Encoding UTF8 -NoNewline -Value @'
+ARG BASE_IMAGE=ghcr.io/the-running-dev/docs-template:latest
+FROM ${BASE_IMAGE}
+
+WORKDIR /template
+COPY . ./docs
+
+CMD ["sh", "-c", "pnpm run start:docker"]
+'@
+}
+
 Write-Host "[SETUP] Complete." -ForegroundColor Green
 Write-Host "[SETUP] Next Steps:" -ForegroundColor Cyan
 Write-Host "  1. Install Dependencies: pnpm install" -ForegroundColor White
 Write-Host "  2. Start Dev Server:    pnpm run dev" -ForegroundColor White
 
+if ($Live -or $BuildOnly) {
+    $DockerDocs = $true
+}
+
 if ($DockerDocs) {
     $context = Join-Path $projectPath 'docs'
-    $dockerfile = Join-Path $context 'Dockerfile'
 
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker not Found on PATH. Install/launch Docker Desktop First."
@@ -124,7 +143,7 @@ if ($DockerDocs) {
     }
 
     Write-Host "[DOCKER] Building '$Tag' from $context (base: $BaseImage) ..." -ForegroundColor Cyan
-    docker build --build-arg "BASE_IMAGE=$BaseImage" -f $dockerfile -t $Tag $context
+    & docker build --build-arg "BASE_IMAGE=$BaseImage" -f $dockerfile -t $Tag $context
 
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Build Failed (exit $LASTEXITCODE)"
