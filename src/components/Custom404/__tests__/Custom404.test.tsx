@@ -108,6 +108,29 @@ describe('Custom404Component', () => {
     );
   });
 
+  it('renders repeated routes without duplicate-key warnings', () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    render(
+      <Custom404Component
+        links={[
+          { to: '/docs', label: '📚 Read Docs', description: 'the docs' },
+          { to: '/docs', label: '📖 Browse Guides', description: 'the guides' }
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: /Read Docs/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Browse Guides/ })
+    ).toBeInTheDocument();
+    expect(consoleError).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+
   it('shows troubleshooting sections', () => {
     render(<Custom404Component />);
 

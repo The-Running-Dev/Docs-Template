@@ -203,9 +203,12 @@ export default function Custom404Component({
                     <Link className="button button--secondary" to="/">
                       🏠 Go Home
                     </Link>
-                    {links.map((link) => (
+                    {/* Keyed by index: `to` is not required to be unique (a
+                        site may offer the same route under two labels), and
+                        this list is static for the lifetime of the render. */}
+                    {links.map((link, index) => (
                       <Link
-                        key={link.to}
+                        key={index}
                         className="button button--secondary"
                         to={link.to}
                       >
@@ -327,7 +330,7 @@ export default function Custom404Component({
                   {' '}
                   While you're here, why not check out{' '}
                   {describedLinks.map((link, index) => (
-                    <React.Fragment key={link.to}>
+                    <React.Fragment key={index}>
                       {index > 0 &&
                         (index === describedLinks.length - 1 ? ' or ' : ', ')}
                       <Link to={link.to}>{link.description}</Link>
