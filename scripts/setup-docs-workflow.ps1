@@ -2,31 +2,24 @@
 
 <#
 .SYNOPSIS
-    Copies the common docs workflow into a caller repository.
+    Copies the Docs workflow into a caller repository.
 
 .DESCRIPTION
-    This script copies the reusable docs workflow from this template repository
-    into a caller repository under `.github/workflow/common`.
-
-    It also prints wiring instructions for per-project workflow entrypoints,
-    including a ready-to-copy sample workflow that triggers on docs changes
-    and calls the reusable workflow.
+    This script copies the Docs workflow template from this repository
+    into a caller repository under `.github/workflows`.
 
     Source workflow template:
-    - template/.github/workflow/docs.yml
-
-    Source instructions markdown:
-    - template/instructions.md
+    - template/.github/workflows/docs.yml
 
 .PARAMETER CallerProjectDir
     Root directory of the caller repository. Defaults to current directory.
 
 .PARAMETER TargetRelativeDir
     Relative destination directory in the caller repository.
-    Default: .github/workflow/common
+    Default: .github/workflows
 
 .PARAMETER TargetFileName
-    Destination file name for the copied reusable workflow.
+    Destination file name for the copied workflow.
     Default: docs.yml
 
 .PARAMETER Overwrite
@@ -42,7 +35,7 @@
 [CmdletBinding()]
 param(
     [Parameter()][string]$CallerProjectDir = '.',
-    [Parameter()][string]$TargetRelativeDir = '.github/workflow/common',
+    [Parameter()][string]$TargetRelativeDir = '.github/workflows',
     [Parameter()][string]$TargetFileName = 'docs.yml',
     [Parameter()][switch]$Overwrite
 )
@@ -62,41 +55,38 @@ function Resolve-OrCreateAbsolutePath {
     return $created.FullName
 }
 
-function Resolve-TemplateRoot {
+function Resolve-TemplateWorkflowPath {
     param(
-        [Parameter(Mandatory)][string]$StartPath
+        [Parameter(Mandatory)][string]$ScriptDirectory
     )
 
-    $current = $StartPath
-    for ($i = 0; $i -lt 8; $i++) {
-        $workflowPath = Join-Path $current 'template/.github/workflow/docs.yml'
-        $instructionsPath = Join-Path $current 'template/instructions.md'
+    $candidates = @(
+        (Join-Path $ScriptDirectory '../template/.github/workflows/docs.yml'),
+        (Join-Path $ScriptDirectory '../../template/.github/workflows/docs.yml'),
+        (Join-Path $ScriptDirectory '../../../template/.github/workflows/docs.yml')
+    )
 
-        if ((Test-Path -LiteralPath $workflowPath) -and (Test-Path -LiteralPath $instructionsPath)) {
-            return $current
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
         }
-
-        $parent = Split-Path -Parent $current
-        if ($parent -eq $current) {
-            break
-        }
-
-        $current = $parent
     }
 
-    throw "Unable to locate the template root. Expected template/.github/workflow/docs.yml and template/instructions.md in an ancestor directory of $StartPath."
+    throw "Unable to locate Docs workflow template. Expected template/.github/workflows/docs.yml near script path '$ScriptDirectory'."
 }
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$templateRoot = Resolve-TemplateRoot -StartPath $scriptDir
-$sourceWorkflow = Join-Path $templateRoot 'template/.github/workflow/docs.yml'
-$sourceInstructions = Join-Path $templateRoot 'template/instructions.md'
+$scriptDir = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+}
+if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+    $scriptDir = (Get-Location).Path
+}
+
+$sourceWorkflow = Resolve-TemplateWorkflowPath -ScriptDirectory $scriptDir
 
 if (-not (Test-Path -LiteralPath $sourceWorkflow)) {
-    throw "Source Workflow not Found at $sourceWorkflow"
-}
-if (-not (Test-Path -LiteralPath $sourceInstructions)) {
-    throw "Source Instructions not Found at $sourceInstructions"
+    throw "Source workflow not found at '$sourceWorkflow'."
 }
 
 $callerRoot = Resolve-OrCreateAbsolutePath -Path $CallerProjectDir
@@ -104,16 +94,12 @@ $targetDir = Resolve-OrCreateAbsolutePath -Path (Join-Path $callerRoot $TargetRe
 $targetPath = Join-Path $targetDir $TargetFileName
 
 if ((Test-Path -LiteralPath $targetPath) -and (-not $Overwrite)) {
-    throw "Destination File Already Exists: $targetPath. Re-run with -Overwrite to Replace It."
+    throw "Destination file already exists: '$targetPath'. Re-run with -Overwrite to replace it."
 }
 
 Copy-Item -LiteralPath $sourceWorkflow -Destination $targetPath -Force
 
-Write-Host "[OK] Copied Reusable Workflow:" -ForegroundColor Green
+Write-Host "[OK] Copied Docs Workflow:" -ForegroundColor Green
 Write-Host "     $targetPath" -ForegroundColor White
 Write-Host ""
-
-$instructions = Get-Content -LiteralPath $sourceInstructions -Raw
-Write-Host "Instructions (template/instructions.md):" -ForegroundColor Cyan
-Write-Host ""
-Write-Host $instructions -ForegroundColor Gray
+Write-Host "Triggers: pull_request, push (main), workflow_dispatch" -ForegroundColor Cyan

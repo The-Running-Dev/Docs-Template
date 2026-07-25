@@ -46,6 +46,40 @@
             )
         }
 @{
+            Id = 'script.scripts.setup-docs-workflow'
+            Name = 'Invoke-SetupDocsWorkflow'
+            Synopsis = 'Runs the discovered PowerShell script ''scripts/setup-docs-workflow.ps1''.'
+            Description = 'Scaffolded from ''scripts/setup-docs-workflow.ps1''. Review its container invocation mappings before publishing.'
+            SourcePath = 'scripts/setup-docs-workflow.ps1'
+            SourceKind = 'Script'
+            Parameters = @(
+@{
+                    Name = 'CallerProjectDir'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from CallerProjectDir.'
+                }
+@{
+                    Name = 'TargetRelativeDir'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from TargetRelativeDir.'
+                }
+@{
+                    Name = 'TargetFileName'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from TargetFileName.'
+                }
+@{
+                    Name = 'Overwrite'
+                    Type = 'switch'
+                    Mandatory = $false
+                    Description = 'Discovered from Overwrite.'
+                }
+            )
+        }
+@{
             Id = 'script.scripts.setup-docs'
             Name = 'Invoke-SetupDocs'
             Synopsis = 'Runs the discovered PowerShell script ''scripts/setup-docs.ps1''.'
@@ -94,40 +128,6 @@
                     Type = 'String'
                     Mandatory = $false
                     Description = 'Discovered from BaseImage.'
-                }
-            )
-        }
-@{
-            Id = 'script.scripts.setup-docs-workflow'
-            Name = 'Invoke-SetupWorkflow'
-            Synopsis = 'Runs the discovered PowerShell script ''scripts/setup-docs-workflow.ps1''.'
-            Description = 'Scaffolded from ''scripts/setup-docs-workflow.ps1''. Review its container invocation mappings before publishing.'
-            SourcePath = 'scripts/setup-docs-workflow.ps1'
-            SourceKind = 'Script'
-            Parameters = @(
-@{
-                    Name = 'CallerProjectDir'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from CallerProjectDir.'
-                }
-@{
-                    Name = 'TargetRelativeDir'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from TargetRelativeDir.'
-                }
-@{
-                    Name = 'TargetFileName'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from TargetFileName.'
-                }
-@{
-                    Name = 'Overwrite'
-                    Type = 'switch'
-                    Mandatory = $false
-                    Description = 'Discovered from Overwrite.'
                 }
             )
         }

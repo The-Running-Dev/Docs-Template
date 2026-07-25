@@ -1,78 +1,19 @@
-# Common Docs Workflow Wiring
+# Docs Workflow Installation
 
-This repository provides a reusable docs workflow template at:
+This repository provides a full docs workflow template at:
 
-- `template/.github/workflow/docs.yml`
+- `template/.github/workflows/docs.yml`
 
-The setup script copies that file into caller repositories at:
+The setup script copies that file directly into caller repositories at:
 
-- `.github/workflow/common/docs.yml`
+- `.github/workflows/docs.yml`
 
-## Why Two Locations?
+## Result
 
-- `.github/workflow/common` is used as a project-level source-of-truth location.
-- GitHub reusable workflow calls (`jobs.<job>.uses`) require the callee file to live under `.github/workflows`.
+After running `scripts/setup-docs-workflow.ps1`, the caller repository has a standalone Docs workflow that triggers on:
 
-Because of that GitHub requirement, add a copy/sync step in the caller repository:
+1. Pull requests (docs, workflow, and script changes)
+2. Pushes to `main` (same paths)
+3. Manual dispatch
 
-1. Source: `.github/workflow/common/docs.yml`
-2. Target: `.github/workflows/docs.yml`
-
-## Caller Entry Workflow Example
-
-Create `.github/workflows/docs-build.yml` in the caller repository:
-
-```yaml
-name: Docs
-
-on:
-  pull_request:
-    paths:
-      - '.github/workflows/docs-build.yml'
-      - '.github/workflows/docs.yml'
-      - '.github/workflow/common/docs.yml'
-      - 'docs/**'
-      - 'scripts/docs.ps1'
-      - 'scripts/setup-docs.ps1'
-      - 'README.md'
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/docs-build.yml'
-      - '.github/workflows/docs.yml'
-      - '.github/workflow/common/docs.yml'
-      - 'docs/**'
-      - 'scripts/docs.ps1'
-      - 'scripts/setup-docs.ps1'
-      - 'README.md'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  packages: read
-  pages: write
-  id-token: write
-
-jobs:
-  docs:
-    uses: ./.github/workflows/docs.yml
-    with:
-      docs-script: ./scripts/docs.ps1
-      image-tag-prefix: docs-site
-      output-path: artifacts/docs
-    secrets: inherit
-```
-
-## Optional Sync Helper (Caller Repo)
-
-If you want to keep `.github/workflow/common/docs.yml` authoritative, add a sync script:
-
-```powershell
-Copy-Item \
-  -LiteralPath .github/workflow/common/docs.yml \
-  -Destination .github/workflows/docs.yml \
-  -Force
-```
-
-Run this before pushing workflow updates.
+No reusable workflow wiring is required.

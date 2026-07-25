@@ -56,17 +56,15 @@ Builds and runs docs from `docs/` using `docs/Dockerfile`.
 .\scripts\docs.ps1 -BuildOnly
 ```
 
-## `scripts/setup-docs-workflow.ps1` - Common Workflow Installer
+## `scripts/setup-docs-workflow.ps1` - Docs Workflow Installer
 
-Copies reusable docs workflow logic from `template/.github/workflow/docs.yml`
-into a caller repository under `.github/workflow/common` and prints wiring instructions.
-
-Additional reference instructions are available in `template/instructions.md`.
+Copies the full Docs workflow from `template/.github/workflows/docs.yml`
+into a caller repository at `.github/workflows/docs.yml`.
 
 **Usage:**
 
 ```powershell
-# Copy common workflow to a caller repository
+# Copy docs workflow to a caller repository
 .\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller"
 
 # Overwrite existing target file

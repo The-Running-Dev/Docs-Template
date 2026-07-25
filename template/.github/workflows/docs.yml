@@ -1,0 +1,130 @@
+name: Docs
+
+"on":
+    pull_request:
+        paths:
+            - ".github/workflows/docs.yml"
+            - "docs/**"
+            - "scripts/docs.ps1"
+            - "scripts/setup-docs.ps1"
+            - "README.md"
+    push:
+        branches:
+            - main
+        paths:
+            - ".github/workflows/docs.yml"
+            - "docs/**"
+            - "scripts/docs.ps1"
+            - "scripts/setup-docs.ps1"
+            - "README.md"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    packages: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: github-pages
+    cancel-in-progress: false
+
+env:
+    DOCS_SCRIPT: ./scripts/docs.ps1
+    BASE_IMAGE: ghcr.io/the-running-dev/docs-template:latest
+    IMAGE_TAG_PREFIX: docs-site
+    OUTPUT_PATH: artifacts/docs
+
+jobs:
+    build:
+        name: Build Documentation
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Check out Repository
+              uses: actions/checkout@v6
+
+            - name: Log in to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.repository_owner }}
+                  password: ${{ secrets.REGISTRY_TOKEN || github.token }}
+
+            - name: Verify Documentation Template
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = 'Stop'
+                  $baseImage = '${{ env.BASE_IMAGE }}'
+
+                  & docker buildx imagetools inspect $baseImage
+
+                  if ($LASTEXITCODE -ne 0) {
+                    throw "Documentation Template '$baseImage' does not Exist or is not Accessible."
+                  }
+
+            - name: Configure GitHub Pages
+              uses: actions/configure-pages@v5
+
+            - name: Build Documentation Image
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = 'Stop'
+                  $image = '${{ env.IMAGE_TAG_PREFIX }}:${{ github.sha }}'
+                  & '${{ env.DOCS_SCRIPT }}' -BuildOnly -Tag $image
+
+            - name: Build and Copy Static Site
+              shell: pwsh
+              run: |
+                  $ErrorActionPreference = 'Stop'
+                  $image = '${{ env.IMAGE_TAG_PREFIX }}:${{ github.sha }}'
+                  $container = '${{ env.IMAGE_TAG_PREFIX }}-build'
+                  $output = './${{ env.OUTPUT_PATH }}'
+
+                  & docker create --name $container $image sh -c 'pnpm run build' | Out-Null
+                  if ($LASTEXITCODE -ne 0) {
+                    throw "Creating the Documentation Build Container Failed with Exit Code $LASTEXITCODE."
+                  }
+
+                  & docker start --attach $container
+                  if ($LASTEXITCODE -ne 0) {
+                    throw "Building the Static Documentation Failed with Exit Code $LASTEXITCODE."
+                  }
+
+                  New-Item -ItemType Directory -Path $output -Force | Out-Null
+                  & docker cp "${container}:/template/artifacts/." $output
+                  if ($LASTEXITCODE -ne 0) {
+                    throw "Copying the Static Documentation Failed with Exit Code $LASTEXITCODE."
+                  }
+
+            - name: Remove Documentation Container
+              if: ${{ always() }}
+              shell: pwsh
+              run: |
+                  $containerName = '${{ env.IMAGE_TAG_PREFIX }}-build'
+                  $container = docker ps --all `
+                    --filter "name=^/$containerName$" `
+                    --format '{{.Names}}'
+
+                  if ($container) {
+                    & docker rm --force $containerName
+                  }
+
+            - name: Upload Artifacts
+              uses: actions/upload-pages-artifact@v4
+              with:
+                  path: ${{ env.OUTPUT_PATH }}
+
+    deploy:
+        name: Deploy Documentation
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v4
