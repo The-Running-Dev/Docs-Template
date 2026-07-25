@@ -97,6 +97,9 @@
 # Required Secrets:
 # - REGISTRY_TOKEN : Token/PAT with package write permissions for GHCR publication
 #
+# Optional Secrets:
+# - NOTIFICATIONS_WEBHOOK_URL : Best-effort release notification after publish (JSON {"text": ...})
+#
 # Security Features:
 # - Minimal required permissions (principle of least privilege)
 # - Secure secret management through GitHub Secrets
@@ -213,6 +216,12 @@ jobs:
       # ================================================================
       # STEP 5: VERSION, BUILD & PUBLISH CONTAINER IMAGE
       # ================================================================
+      # On pull requests, validate the image builds (no login, no push).
+      - name: Build docs-template Image (validate, no push)
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: ./scripts/docs-build-image.ps1
+
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -222,14 +231,34 @@ jobs:
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Version, Build & Push docs-template Image
+        id: publish
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $version = Get-Date -Format 'yyyy.MM.dd'
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Publishing docs-template image :latest and :$version"
           ./scripts/docs-build-image.ps1 `
             -AdditionalTags "ghcr.io/the-running-dev/docs-template:$version" `
             -Push
+
+      # Best-effort release notification (replaces the build-agent's webhook).
+      # Skipped when the secret is unset; a failed post does not fail the release.
+      - name: Notify Release Webhook
+        if: github.event_name != 'pull_request' && success()
+        continue-on-error: true
+        shell: pwsh
+        env:
+          WEBHOOK_URL: ${{ secrets.NOTIFICATIONS_WEBHOOK_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WEBHOOK_URL)) {
+            Write-Host 'NOTIFICATIONS_WEBHOOK_URL not set; skipping notification.'
+            return
+          }
+          $version = '${{ steps.publish.outputs.version }}'
+          $text = "docs-template image published: :latest and :$version ($env:GITHUB_REPOSITORY@$($env:GITHUB_SHA.Substring(0,7)))"
+          $payload = @{ text = $text } | ConvertTo-Json -Compress
+          Invoke-RestMethod -Uri $env:WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload
 
       # ================================================================
       # STEP 6: UPLOAD PAGES ARTIFACT
