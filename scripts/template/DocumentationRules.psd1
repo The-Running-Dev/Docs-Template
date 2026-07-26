@@ -44,7 +44,7 @@
     # Set SiteUrl to the published origin, with a trailing slash, so absolute
     # links in the README resolve to site-relative links on the homepage.
     #
-    # The start/end markers above and below are load-bearing: Invoke-SetupDocs.ps1
+    # The start/end markers above and below are load-bearing: setup-docs.ps1
     # locates this exact block by those two comment lines to remove it entirely
     # when -NoHomepage is passed. Keep them if you edit this block by hand.
     GeneratedFiles = @(

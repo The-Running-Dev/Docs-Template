@@ -6,7 +6,7 @@ sidebar_position: 3
 
 The template includes setup and development PowerShell scripts to streamline the workflow:
 
-## `scripts/Invoke-SetupDocs.ps1` - Install the Documentation System
+## `scripts/setup-docs.ps1` - Install the Documentation System
 
 Installs everything a consuming project needs to author, preview, check, and
 publish documentation from this template, in one command: the `docs/` overlay,
@@ -17,13 +17,13 @@ documentation gate, and the workflows that run them.
 
 ```powershell
 # Run from the target project directory
-.\scripts\Invoke-SetupDocs.ps1 -ProjectDir "C:\path\to\project"
+.\scripts\setup-docs.ps1 -ProjectDir "C:\path\to\project"
 
 # Set the homepage title/description and the published site origin
-.\scripts\Invoke-SetupDocs.ps1 -ProjectDir . -Title "My Project" -SiteUrl "https://docs.example.com/"
+.\scripts\setup-docs.ps1 -ProjectDir . -Title "My Project" -SiteUrl "https://docs.example.com/"
 
 # Preview every action without writing anything
-.\scripts\Invoke-SetupDocs.ps1 -Overwrite -WhatIf
+.\scripts\setup-docs.ps1 -Overwrite -WhatIf
 ```
 
 **What it installs:**
@@ -59,7 +59,7 @@ published base image (pulling it if missing) and bind-mounts `./docs` over
 `/template` for hot reload. It does not build the static site — that happens in
 CI via `scripts/docs-build.ps1`.
 
-This is not the `docs.ps1` that `Invoke-SetupDocs.ps1` installs into a
+This is not the `docs.ps1` that `setup-docs.ps1` installs into a
 consuming project's root — that is a separate script under
 `scripts/template/docs.ps1`, built and run by the consumer as `./docs.ps1`.
 

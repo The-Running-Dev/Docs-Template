@@ -6,11 +6,11 @@
     ContainerImage = 'DocusaurusTemplate'
     Commands = @(
 @{
-            Id = 'script.scripts.preview-docs'
-            Name = 'Invoke-PreviewDocs'
-            Synopsis = 'Runs the discovered PowerShell script ''scripts/preview-docs.ps1''.'
-            Description = 'Scaffolded from ''scripts/preview-docs.ps1''. Review its container invocation mappings before publishing.'
-            SourcePath = 'scripts/preview-docs.ps1'
+            Id = 'script.scripts.docs'
+            Name = 'Invoke-Docs'
+            Synopsis = 'Runs the discovered PowerShell script ''scripts/docs.ps1''.'
+            Description = 'Scaffolded from ''scripts/docs.ps1''. Review its container invocation mappings before publishing.'
+            SourcePath = 'scripts/docs.ps1'
             SourceKind = 'Script'
             Parameters = @(
 @{
@@ -80,11 +80,11 @@
             )
         }
 @{
-            Id = 'script.scripts.invoke-setupdocs'
+            Id = 'script.scripts.setup-docs'
             Name = 'Invoke-SetupDocs'
-            Synopsis = 'Runs the discovered PowerShell script ''scripts/Invoke-SetupDocs.ps1''.'
-            Description = 'Scaffolded from ''scripts/Invoke-SetupDocs.ps1''. Review its container invocation mappings before publishing.'
-            SourcePath = 'scripts/Invoke-SetupDocs.ps1'
+            Synopsis = 'Runs the discovered PowerShell script ''scripts/setup-docs.ps1''.'
+            Description = 'Scaffolded from ''scripts/setup-docs.ps1''. Review its container invocation mappings before publishing.'
+            SourcePath = 'scripts/setup-docs.ps1'
             SourceKind = 'Script'
             Parameters = @(
 @{
@@ -94,58 +94,40 @@
                     Description = 'Discovered from ProjectDir.'
                 }
 @{
-                    Name = 'Title'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from Title.'
-                }
-@{
-                    Name = 'Description'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from Description.'
-                }
-@{
-                    Name = 'SiteUrl'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from SiteUrl.'
-                }
-@{
-                    Name = 'ScriptDir'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from ScriptDir.'
-                }
-@{
-                    Name = 'ConfigDir'
-                    Type = 'String'
-                    Mandatory = $false
-                    Description = 'Discovered from ConfigDir.'
-                }
-@{
-                    Name = 'NoHomepage'
+                    Name = 'DockerDocs'
                     Type = 'switch'
                     Mandatory = $false
-                    Description = 'Discovered from NoHomepage.'
+                    Description = 'Discovered from DockerDocs.'
                 }
 @{
-                    Name = 'SkipWorkflow'
+                    Name = 'Live'
                     Type = 'switch'
                     Mandatory = $false
-                    Description = 'Discovered from SkipWorkflow.'
+                    Description = 'Discovered from Live.'
                 }
 @{
-                    Name = 'SkipGate'
+                    Name = 'BuildOnly'
                     Type = 'switch'
                     Mandatory = $false
-                    Description = 'Discovered from SkipGate.'
+                    Description = 'Discovered from BuildOnly.'
                 }
 @{
-                    Name = 'Overwrite'
-                    Type = 'switch'
+                    Name = 'Port'
+                    Type = 'Int32'
                     Mandatory = $false
-                    Description = 'Discovered from Overwrite.'
+                    Description = 'Discovered from Port.'
+                }
+@{
+                    Name = 'Tag'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from Tag.'
+                }
+@{
+                    Name = 'BaseImage'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Discovered from BaseImage.'
                 }
             )
         }

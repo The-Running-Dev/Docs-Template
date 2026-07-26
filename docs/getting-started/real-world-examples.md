@@ -8,7 +8,7 @@ This section showcases how the Docusaurus Template is used in actual production 
 
 ## Which Script to Use
 
-- Use `./scripts/Invoke-SetupDocs.ps1` when you want to install the docs overlay, local preview, documentation gate, and CI/deploy workflows in a project.
+- Use `./scripts/setup-docs.ps1` when you want to install the docs overlay, local preview, documentation gate, and CI/deploy workflows in a project.
 - Use `./scripts/preview-docs.ps1` when you want to preview this template's own docs locally with hot reload (runs the base image, no build).
 
 ## Docker Build Agent Integration

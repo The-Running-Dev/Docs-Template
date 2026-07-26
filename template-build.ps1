@@ -47,7 +47,7 @@
     - PowerShell execution policy allowing script execution
     
     The script performs Phase 2 of the development workflow:
-    Phase 1 would typically be initial setup (scripts/Invoke-SetupDocs.ps1)
+    Phase 1 would typically be initial setup (scripts/setup-docs.ps1)
     Phase 2 (this script) handles dependency installation and server startup
 
 .LINK

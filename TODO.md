@@ -145,7 +145,7 @@ Acceptance criteria:
 ## P1 - Documentation Gate System (Invoke-SetupDocs)
 
 Raised by the review of PR #38 (`feat/invoke-setupdocs`, adds
-`scripts/Invoke-SetupDocs.ps1` and the documentation gate under
+`scripts/setup-docs.ps1` and the documentation gate under
 `scripts/template/`).
 
 ### 13) Homepage generator does not rewrite relative README links
@@ -183,7 +183,7 @@ Candidate fixes, not yet chosen:
   `https://github.com/org/repo/blob/main/docs/guide.md` during generation, the
   same way `SiteUrl` is already rewritten. Correct on both the code host and
   the published site. Needs the parameter threaded through
-  `Invoke-SetupDocs.ps1`, the rules file `Arguments`, and `docs.ps1`, plus a
+  `setup-docs.ps1`, the rules file `Arguments`, and `docs.ps1`, plus a
   decision on the default branch name.
 - **Exclude generated files from link scanning.** Add
   `docs/docs/index.md` to `ExcludedFiles` in `DocumentationRules.psd1`. One
@@ -200,7 +200,7 @@ Candidate fixes, not yet chosen:
 Acceptance criteria:
 
 - A project with a README containing relative links to other repository files
-  passes the gate immediately after `Invoke-SetupDocs.ps1`, with no manual
+  passes the gate immediately after `setup-docs.ps1`, with no manual
   edits.
 
 ## P2 - API Deferred Scope and Hygiene

@@ -63,13 +63,13 @@
     Replace files that already exist.
 
 .EXAMPLE
-    ./scripts/Invoke-SetupDocs.ps1 -ProjectDir C:\src\my-project
+    ./scripts/setup-docs.ps1 -ProjectDir C:\src\my-project
 
 .EXAMPLE
-    ./scripts/Invoke-SetupDocs.ps1 -ProjectDir . -Title 'My Project' -SiteUrl 'https://docs.example.com/'
+    ./scripts/setup-docs.ps1 -ProjectDir . -Title 'My Project' -SiteUrl 'https://docs.example.com/'
 
 .EXAMPLE
-    ./scripts/Invoke-SetupDocs.ps1 -Overwrite -WhatIf
+    ./scripts/setup-docs.ps1 -Overwrite -WhatIf
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(

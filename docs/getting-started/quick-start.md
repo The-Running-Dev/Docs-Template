@@ -15,7 +15,7 @@ cd my-docs-site
 pnpm install
 
 # Run setup script to configure template files (PowerShell)
-.\scripts\Invoke-SetupDocs.ps1
+.\scripts\setup-docs.ps1
 ```
 
 ### 2. Configure Your Site
