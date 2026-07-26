@@ -32,3 +32,15 @@ jobs:
 
             - name: Build Documentation (verify)
               run: /template/scripts/docs-build.ps1 -SourceDocs ./docs -OutputPath artifacts/docs
+
+            # Run the same archiving step docs-deploy.yml uses, so the deploy
+            # path is covered before merge rather than after it. This action
+            # tars the site with `tar --hard-dereference`, which fails outright
+            # on an image without GNU tar; because deploy only runs on push to
+            # main, such a break used to surface only once it was too late to
+            # block. Uploading an artifact publishes nothing — deploy-pages
+            # does that, and it stays out of this workflow.
+            - name: Archive Pages Artifact (verify deploy path)
+              uses: actions/upload-pages-artifact@v4
+              with:
+                  path: artifacts/docs

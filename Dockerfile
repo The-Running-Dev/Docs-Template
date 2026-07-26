@@ -7,6 +7,11 @@ RUN npm install -g pnpm tsx
 # Install PowerShell (Alpine/musl build) so the in-image docs-build script and
 # CI container jobs can run .ps1 scripts. Microsoft ships a musl tarball plus a
 # set of native runtime dependencies that must be present on Alpine.
+#
+# `tar` is GNU tar, installed over BusyBox's applet on purpose: workflows that
+# run inside this image call actions/upload-pages-artifact, which archives with
+# `tar --hard-dereference`. BusyBox tar does not accept that flag and fails the
+# Pages deploy at the "Archive artifact" step.
 ARG POWERSHELL_VERSION=7.4.6
 ARG POWERSHELL_SHA256=d5f63653c1cc73a8903d0181bd8616952b4b0e435758d98ee19a617c203c48a8
 RUN apk add --no-cache \
@@ -24,6 +29,7 @@ RUN apk add --no-cache \
         zlib \
         icu-libs \
         curl \
+        tar \
     && curl -fSL "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/powershell-${POWERSHELL_VERSION}-linux-musl-x64.tar.gz" \
         -o /tmp/powershell.tar.gz \
     && echo "${POWERSHELL_SHA256}  /tmp/powershell.tar.gz" | sha256sum -c - \
