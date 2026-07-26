@@ -57,28 +57,16 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
-function ConvertTo-YamlSingleQuotedScalar {
-    <#
-    .SYNOPSIS
-    Serializes a string as a single-line, single-quoted YAML scalar.
-
-    Front matter fields here are single-line browser-tab/meta-description
-    text, so an embedded newline is collapsed to a space rather than kept --
-    keeping it would either break the YAML block or require a block-scalar
-    style this file does not otherwise use, and either way a raw newline is
-    exactly what lets a value close the front matter early and inject
-    fabricated keys after it. Embedded single quotes are doubled, which is
-    single-quoted YAML's own escape and cannot reopen the block either.
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [AllowEmptyString()]
-        [string] $Value
+# Shared with setup-docs.ps1's stub-homepage path so the two cannot escape front
+# matter differently. Installed into the same directory as this script, so this
+# resolves both from the template and from a project's script directory.
+$yamlHelper = Join-Path $PSScriptRoot 'DocumentationYaml.ps1'
+if (-not (Test-Path -LiteralPath $yamlHelper -PathType Leaf)) {
+    throw [System.IO.FileNotFoundException]::new(
+        "Required helper not found at '$yamlHelper'. Re-run setup-docs.ps1 -Overwrite to reinstall it."
     )
-
-    $collapsed = ($Value -replace '\r\n?|\n', ' ').Trim()
-    return "'$($collapsed.Replace("'", "''"))'"
 }
+. $yamlHelper
 
 if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
     throw [System.IO.FileNotFoundException]::new(

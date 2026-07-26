@@ -602,12 +602,15 @@ if ($findings.Count -gt 0) {
     }
 }
 
-$errorFindings = @($findings | Where-Object Severity -eq 'Error')
+# Only 'Warning' is non-blocking. Anything else blocks, rather than matching
+# 'Error' exactly -- a rule added later with a new or mistyped severity should
+# fail loudly instead of being silently reported and passed over.
 $warningFindings = @($findings | Where-Object Severity -eq 'Warning')
+$blockingFindings = @($findings | Where-Object Severity -ne 'Warning')
 
-if ($errorFindings.Count -gt 0) {
+if ($blockingFindings.Count -gt 0) {
     throw (
-        "Documentation checks failed with $($errorFindings.Count) error(s), " +
+        "Documentation checks failed with $($blockingFindings.Count) error(s), " +
         "$($warningFindings.Count) warning(s)."
     )
 }
