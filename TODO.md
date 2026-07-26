@@ -1,6 +1,6 @@
 # TODO
 
-Last updated: 2026-07-26 (added P1.13)
+Last updated: 2026-07-27 (added P1.13, P1.14, P1.15)
 
 This TODO is based on the current repository audit (code, docs, tests, API package, and workflows).
 
@@ -203,6 +203,111 @@ Acceptance criteria:
   passes the gate immediately after `setup-docs.ps1`, with no manual
   edits.
 
+### 14) Setup docs conflate a template copy with a consumer repository
+
+Confirmed 2026-07-27. `README.md`, `AGENTS.md`, `docs/getting-started/quick-start.md`,
+and `src/pages/index.md` all describe the same bootstrap: copy this template to
+a new folder, `pnpm install`, then run `.\scripts\setup-docs.ps1`. That script
+builds a _consumer overlay_, which is a different shape from a template copy.
+
+Running the documented flow against a template-shaped project produces a hybrid:
+
+```
+docusaurus.config.ts        ← the template's own config, at the root
+docs/docusaurus.config.ts   ← a second config, consumer-overlay shape
+docs/guides/intro.md        ← template content, directly under docs/
+docs/docs/index.md          ← consumer content, nested one level deeper
+```
+
+The two layouts being conflated:
+
+- **Template copy** — `docs/` _is_ the content directory; the config lives at
+  the repository root. This is how this repository builds itself.
+- **Consumer overlay** — `docs/` is a self-contained overlay copied over
+  `/template` in the published image, so it carries its own
+  `docusaurus.config.ts`, `sidebar.ts`, and a nested `docs/` for content.
+
+Nothing crashes: stray `.ts` files inside the content directory are ignored by
+the docs plugin, and `docs/docs/index.md` merely becomes an oddly routed page.
+The sharper edge is the root `docs.ps1` the script installs, which builds
+`docs/` _as an overlay_ — wrong for a template copy whose `docs/` is content.
+
+Pre-existing, not introduced by PR #38: the previous `setup-docs.ps1` on `main`
+already created `docs/docs/index.md`, `docs/docusaurus.config.ts`, and
+`docs/sidebar.ts`. PR #38 makes it more pronounced by additionally installing
+`docs.ps1`, `build/`, `.config/`, and two more workflows, and by stating the
+bootstrap claim more confidently in `AGENTS.md`.
+
+Candidate fixes, not yet chosen:
+
+- **Scope the documentation (recommended).** State plainly that
+  `setup-docs.ps1` targets a _consumer_ repository, and give template-copy
+  users a different step or none. A documentation fix for a documentation
+  problem, and it adds no branching to a script that already carries a lot.
+- **Detect and adapt.** Have the script recognise a template-shaped project
+  (root `docusaurus.config.ts` with no `docs/docs/`) and either refuse or
+  install only the template-appropriate subset. More behaviour to maintain.
+- **Leave it.** Nothing breaks outright and it has been this way for a while.
+
+- [ ] Decide between the approaches above.
+- [ ] If scoping the docs: update `README.md`, `AGENTS.md`,
+      `docs/getting-started/quick-start.md`, and `src/pages/index.md` together,
+      since all four carry the same claim.
+
+Acceptance criteria:
+
+- A reader following the documented bootstrap ends up with a coherent layout,
+  or is told plainly that the step does not apply to them.
+
+### 15) `ConvertTo-YamlSingleQuotedScalar` is duplicated
+
+Introduced 2026-07-26 by the YAML front-matter injection fix, and deliberately
+left in place. The function — two lines of logic — is defined identically in:
+
+- `scripts/setup-docs.ps1` (the stub homepage written when a project has no
+  README)
+- `scripts/template/ConvertTo-DocumentationHomepage.ps1` (the real homepage
+  generated from a README)
+
+The duplication is forced rather than careless. The generator is installed into
+consumer projects and invoked by three separate callers — `setup-docs.ps1` at
+install time, the gate's drift check via the rules file `Generator` entry, and
+the consumer's own `docs.ps1` preview — so it has to stand alone inside someone
+else's repository. The stub path cannot delegate to it, because that path only
+runs when there is no README, and in that case the generator is never
+installed. It cannot dot-source it either: the generator is a script with a
+mandatory `-ReadmePath`, so dot-sourcing executes it.
+
+Severity is low. The two copies serve mutually exclusive paths and can never
+disagree about the same file: a README means the generator runs and the stub
+does not, and no README means the stub runs and the generator is not installed.
+The real risk is that someone changes the escaping rules in one copy and not
+the other, so two _different_ projects get differently escaped front matter.
+Nothing catches that automatically — the drift check only compares the
+generated homepage, and when the stub runs, the `GeneratedFiles` block is
+stripped from the rules, so the stub file is not drift-checked at all.
+
+A shared dot-sourced helper was implemented and then reverted, deliberately:
+it gave the generator a run-time dependency on a sibling file that must ship
+and stay in sync with it, which is a worse trade for a two-line function.
+
+Candidate fixes, not yet chosen:
+
+- **Cross-reference comments (recommended).** A comment in each copy naming the
+  other, so anyone editing one is told to change both. No structural change, no
+  new file, no run-time dependency.
+- **Leave it.** Two lines, mutually exclusive paths, no correctness impact.
+- **Shared helper.** Only worth revisiting if this helper grows beyond a couple
+  of lines, or a third caller appears.
+
+- [ ] Decide between the approaches above.
+- [ ] If the escaping rules are ever changed, change both copies together.
+
+Acceptance criteria:
+
+- Either the duplication is gone, or both copies point at each other so a future
+  edit cannot silently touch only one.
+
 ## P2 - API Deferred Scope and Hygiene
 
 ### 6) Move API to Phase 2 (single scope)
@@ -256,11 +361,15 @@ Acceptance criteria:
    reviewer producing findings on every PR until resolved.
 4. P1.3/P1.4 docs + workflow consistency pass.
 5. P1.5 stricter coverage policy + enforcement.
-6. P1.12 restore this site's 404 navigation.
-7. P1.13 fix the homepage generator's relative-link handling.
-8. P2.6 API moved out of default path and documented as Phase 2.
-9. P2.7 API keep/remove decision checkpoint.
-10. P2 hygiene and backlog cleanup.
+6. P1.14 scope the setup docs — cheap, and it stops readers following a
+   bootstrap that does not fit them.
+7. P1.12 restore this site's 404 navigation.
+8. P1.13 fix the homepage generator's relative-link handling.
+9. P2.6 API moved out of default path and documented as Phase 2.
+10. P2.7 API keep/remove decision checkpoint.
+11. P2 hygiene and backlog cleanup.
+12. P1.15 the duplicated YAML escaper — lowest priority; no correctness impact,
+    worth doing only alongside other work in these files.
 
 ## Open Decisions (Need Product/Owner Input)
 
