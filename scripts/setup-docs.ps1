@@ -195,15 +195,27 @@ function Copy-TemplateFile {
     Set-ProjectFile -Destination $Destination -Content $content -Relative $Relative
 }
 
-# ConvertTo-YamlSingleQuotedScalar, shared with the homepage generator so the
-# stub written here and the generated homepage cannot escape front matter
-# differently. Dot-sourced rather than duplicated; the same file is installed
-# alongside the generator for the gate and preview script to use.
-$yamlHelper = Join-Path $templateDir 'DocumentationYaml.ps1'
-if (-not (Test-Path -LiteralPath $yamlHelper -PathType Leaf)) {
-    throw "Template asset 'DocumentationYaml.ps1' not found at '$yamlHelper'."
+function ConvertTo-YamlSingleQuotedScalar {
+    <#
+    .SYNOPSIS
+    Serializes a string as a single-line, single-quoted YAML scalar.
+
+    Used for the no-README stub homepage's front matter. A raw, unescaped
+    -Title could otherwise contain a newline and an embedded '---', closing
+    the front matter block early and injecting fabricated keys after it --
+    confirmed against ConvertTo-DocumentationHomepage.ps1's original
+    unescaped interpolation before this fix. Collapsing newlines and doubling
+    embedded single quotes closes both paths off entirely.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Value
+    )
+
+    $collapsed = ($Value -replace '\r\n?|\n', ' ').Trim()
+    return "'$($collapsed.Replace("'", "''"))'"
 }
-. $yamlHelper
 
 function ConvertTo-DockerTagSegment {
     <#
@@ -345,18 +357,10 @@ if (-not $NoHomepage -and -not (Test-Path -LiteralPath $readmePath -PathType Lea
 # Only install the generator when something actually runs it. With -NoHomepage
 # the gate has no drift check and docs.ps1 skips regeneration, so shipping it
 # would leave a script nothing calls.
-#
-# DocumentationYaml.ps1 goes with it, not separately: the generator dot-sources
-# it at run time, so installing one without the other leaves a generator that
-# throws the moment the gate or the preview script calls it.
 if ($generateHomepage) {
     Copy-TemplateFile -Name 'ConvertTo-DocumentationHomepage.ps1' `
         -Destination (Join-Path $scriptTarget 'ConvertTo-DocumentationHomepage.ps1') `
         -Relative "$ScriptDir/ConvertTo-DocumentationHomepage.ps1"
-
-    Copy-TemplateFile -Name 'DocumentationYaml.ps1' `
-        -Destination (Join-Path $scriptTarget 'DocumentationYaml.ps1') `
-        -Relative "$ScriptDir/DocumentationYaml.ps1"
 }
 
 if ($generateHomepage) {
