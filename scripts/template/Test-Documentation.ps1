@@ -22,6 +22,11 @@ One or more files or directories to scan. Defaults to the repository root.
 
 .PARAMETER SettingsPath
 Rules file to apply. Defaults to .config/DocumentationRules.psd1.
+
+.PARAMETER TreatWarningsAsErrors
+Fail the gate on any finding, including 'Warning' severity (currently
+Terminology only). Without this switch, only 'Error' findings fail the gate;
+warnings are printed but do not block.
 #>
 [CmdletBinding()]
 param (
@@ -31,13 +36,46 @@ param (
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string] $SettingsPath
+    [string] $SettingsPath,
+
+    [Parameter()]
+    [switch] $TreatWarningsAsErrors
 )
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
-$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+function Find-DocumentationRepositoryRoot {
+    <#
+    .SYNOPSIS
+    Walks upward from a starting path to the nearest directory containing
+    '.git', which may be a directory (a normal clone) or a file (a submodule
+    or worktree). Not '..' from the script: this script can be installed at
+    any depth via -ScriptDir, so the root cannot be assumed to be one level up.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string] $StartPath
+    )
+
+    $current = [IO.Path]::GetFullPath($StartPath)
+    while ($true) {
+        if (Test-Path -LiteralPath (Join-Path $current '.git')) {
+            return $current
+        }
+
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrEmpty($parent) -or $parent -eq $current) {
+            throw [System.IO.DirectoryNotFoundException]::new(
+                "Could not locate the repository root above '$StartPath': " +
+                "no '.git' was found in any parent directory."
+            )
+        }
+        $current = $parent
+    }
+}
+
+$repositoryRoot = Find-DocumentationRepositoryRoot -StartPath $PSScriptRoot
 
 if (-not $PSBoundParameters.ContainsKey('SettingsPath')) {
     $SettingsPath = Join-Path $repositoryRoot '.config' 'DocumentationRules.psd1'
@@ -562,10 +600,30 @@ if ($findings.Count -gt 0) {
             "[$($finding.Severity)] $($finding.Rule): $($finding.Message)"
         )
     }
-
-    throw "Documentation checks failed with $($findings.Count) finding(s)."
 }
 
-Write-Host (
-    "Documentation checks passed across $($documentationFiles.Count) Markdown file(s)."
-) -ForegroundColor Green
+$errorFindings = @($findings | Where-Object Severity -eq 'Error')
+$warningFindings = @($findings | Where-Object Severity -eq 'Warning')
+
+if ($errorFindings.Count -gt 0) {
+    throw (
+        "Documentation checks failed with $($errorFindings.Count) error(s), " +
+        "$($warningFindings.Count) warning(s)."
+    )
+}
+
+if ($TreatWarningsAsErrors -and $warningFindings.Count -gt 0) {
+    throw "Documentation checks failed with $($warningFindings.Count) warning(s) (-TreatWarningsAsErrors)."
+}
+
+if ($warningFindings.Count -gt 0) {
+    Write-Host (
+        "Documentation checks passed across $($documentationFiles.Count) Markdown file(s), " +
+        "with $($warningFindings.Count) warning(s)."
+    ) -ForegroundColor Yellow
+}
+else {
+    Write-Host (
+        "Documentation checks passed across $($documentationFiles.Count) Markdown file(s)."
+    ) -ForegroundColor Green
+}

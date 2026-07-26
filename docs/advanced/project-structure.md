@@ -11,7 +11,7 @@ sidebar_position: 1
 ├── .copy.ignore.example            # File ignore patterns for copying
 ├── template-build.ps1              # Development server launcher (with full docs)
 ├── scripts/
-│   ├── setup-docs.ps1             # Canonical setup script for new template copies
+│   ├── Invoke-SetupDocs.ps1        # Canonical setup script for new template copies
 │   └── pre-build.ts               # Pre-build tasks: markdown copy, navbar generation, versioning
 ├── src/
 │   ├── components/

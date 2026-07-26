@@ -30,9 +30,9 @@
     Project directory containing ./docs. Defaults to the current directory.
 
 .EXAMPLE
-    ./scripts/docs.ps1          # serve http://localhost:3000/docs with hot reload
+    ./scripts/preview-docs.ps1          # serve http://localhost:3000/docs with hot reload
 .EXAMPLE
-    ./scripts/docs.ps1 -Port 8080
+    ./scripts/preview-docs.ps1 -Port 8080
 #>
 
 [CmdletBinding()]
@@ -56,7 +56,7 @@ $root = (Resolve-Path -LiteralPath $ProjectDir).Path
 $docsDir = Join-Path $root 'docs'
 
 if (-not (Test-Path -LiteralPath $docsDir)) {
-    throw "No docs/ directory at '$docsDir'. Run scripts/setup-docs.ps1 first to scaffold it."
+    throw "No docs/ directory at '$docsDir'. Run scripts/Invoke-SetupDocs.ps1 first to scaffold it."
 }
 
 # Ensure the image exists locally; pull it if not.

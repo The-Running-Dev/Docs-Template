@@ -167,6 +167,37 @@ function Copy-TemplateFile {
     Set-ProjectFile -Destination $Destination -Content $content -Relative $Relative
 }
 
+function ConvertTo-DockerTagSegment {
+    <#
+    .SYNOPSIS
+    Turns a title into a lowercase, hyphenated segment safe for a Docker tag.
+
+    Decomposes accented characters first (U-with-diaeresis becomes U plus a
+    combining mark) and drops the combining marks, so an accented title keeps
+    its readable base letters instead of losing them outright. Falls back to
+    a fixed segment when nothing alphanumeric survives, since a tag cannot be
+    empty or start with '-' (e.g. a title of '!!!' or only whitespace).
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Value
+    )
+
+    $decomposed = $Value.Normalize([Text.NormalizationForm]::FormD)
+    $withoutMarks = -join ($decomposed.ToCharArray() | Where-Object {
+            [Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne
+            [Globalization.UnicodeCategory]::NonSpacingMark
+        })
+
+    $slug = ($withoutMarks -replace '[^A-Za-z0-9]+', '-').ToLowerInvariant().Trim('-')
+
+    if ([string]::IsNullOrEmpty($slug)) {
+        return 'project'
+    }
+    return $slug
+}
+
 $projectPath = Resolve-ProjectPath -Path $ProjectDir
 $docsDir = Join-Path $projectPath 'docs'
 $contentDir = Join-Path $docsDir 'docs'
@@ -216,7 +247,7 @@ Copy-TemplateFile -Name 'docs.ps1' `
     -Replace @{
         "Join-Path `$root 'build' 'ConvertTo-DocumentationHomepage.ps1'" = "Join-Path `$root '$ScriptDir' 'ConvertTo-DocumentationHomepage.ps1'"
         "Join-Path `$root '.config' 'DocumentationRules.psd1'" = "Join-Path `$root '$ConfigDir' 'DocumentationRules.psd1'"
-        "[string]`$Tag = 'project-docs'" = "[string]`$Tag = '$(($Title -replace '[^A-Za-z0-9]+', '-').ToLowerInvariant().Trim('-'))-docs'"
+        "[string]`$Tag = 'project-docs'" = "[string]`$Tag = '$(ConvertTo-DockerTagSegment -Value $Title)-docs'"
     }
 
 # --- Homepage ---------------------------------------------------------------
@@ -277,7 +308,35 @@ if (-not $SkipGate) {
         # file this project does not generate. This also covers a project with
         # no README, where the generator was never installed and the check would
         # fail on a missing script rather than on real drift.
-        $rules = [regex]::Replace($rules, '(?s)\r?\n\s*GeneratedFiles = @\(.*?\n    \)\r?\n', "`n")
+        #
+        # Located by explicit marker lines (see DocumentationRules.psd1) rather
+        # than matched by indentation depth, so reformatting the template file
+        # cannot silently break this strip -- a missing marker throws instead.
+        $startMarker = '    # --- GeneratedFiles:start ---'
+        $endMarker = '    # --- GeneratedFiles:end ---'
+
+        $ruleLines = @($rules -split "`r?`n")
+        $startLine = [Array]::IndexOf($ruleLines, $startMarker)
+        $endLine = [Array]::IndexOf($ruleLines, $endMarker)
+
+        if ($startLine -lt 0 -or $endLine -lt 0) {
+            throw (
+                "DocumentationRules.psd1 template is missing the GeneratedFiles " +
+                "markers ('$($startMarker.Trim())' / '$($endMarker.Trim())'); " +
+                'cannot strip the block for -NoHomepage.'
+            )
+        }
+
+        # Also drop one trailing blank line, so removing the block doesn't leave
+        # a double gap between the sections on either side of it.
+        $removeThrough = $endLine
+        if ($endLine + 1 -lt $ruleLines.Count -and [string]::IsNullOrWhiteSpace($ruleLines[$endLine + 1])) {
+            $removeThrough++
+        }
+
+        $before = if ($startLine -gt 0) { $ruleLines[0..($startLine - 1)] } else { @() }
+        $after = if ($removeThrough + 1 -lt $ruleLines.Count) { $ruleLines[($removeThrough + 1)..($ruleLines.Count - 1)] } else { @() }
+        $rules = ($before + $after) -join "`n"
     }
 
     Set-ProjectFile `

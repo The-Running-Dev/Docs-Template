@@ -40,7 +40,7 @@ cd my-docs-site
 pnpm install
 
 # Configure the template (PowerShell)
-.\scripts\setup-docs.ps1
+.\scripts\Invoke-SetupDocs.ps1
 
 # Start development server with quality checks
 pnpm run start

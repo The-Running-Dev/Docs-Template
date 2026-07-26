@@ -6,51 +6,71 @@ sidebar_position: 3
 
 The template includes setup and development PowerShell scripts to streamline the workflow:
 
-## `scripts/setup-docs.ps1` - Docs Scaffold + Workflow Install
+## `scripts/Invoke-SetupDocs.ps1` - Install the Documentation System
 
-Orchestration only (no Docker). Creates the `docs/` overlay and installs the
-docs CI/deploy workflows.
+Installs everything a consuming project needs to author, preview, check, and
+publish documentation from this template, in one command: the `docs/` overlay,
+a root `docs.ps1` local preview entry point, the homepage generator, the
+documentation gate, and the workflows that run them.
 
 **Usage:**
 
 ```powershell
-# Run from template directory
-.\scripts\setup-docs.ps1
+# Run from the target project directory
+.\scripts\Invoke-SetupDocs.ps1 -ProjectDir "C:\path\to\project"
 
-# Or specify a different project directory
-.\scripts\setup-docs.ps1 -ProjectDir "C:\path\to\project"
+# Set the homepage title/description and the published site origin
+.\scripts\Invoke-SetupDocs.ps1 -ProjectDir . -Title "My Project" -SiteUrl "https://docs.example.com/"
 
-# Scaffold only, skip installing the workflows
-.\scripts\setup-docs.ps1 -SkipWorkflow
+# Preview every action without writing anything
+.\scripts\Invoke-SetupDocs.ps1 -Overwrite -WhatIf
 ```
 
-**What it does:**
+**What it installs:**
 
-- Creates `docs/docs/` and `docs/docs/index.md` when missing
-- Seeds `docs/docs/index.md` from root `README.md` or `readme.md` when available
-- Seeds `docs/docusaurus.config.ts` and `docs/sidebar.ts` from the template when
-  missing (optional overrides of the base image defaults)
-- Installs `docs-ci.yml` / `docs-deploy.yml` unless `-SkipWorkflow`
-- Supports setup in any target folder via `-ProjectDir`
+- `docs/docusaurus.config.ts`, `docs/sidebar.ts` — site configuration
+- `docs/Dockerfile`, `docs/.dockerignore` — local preview overlay on the
+  published base image
+- `docs/docs/index.md` — homepage, generated from the project `README.md`
+- `docs.ps1` — local preview entry point (build/run the overlay, no Node
+  install needed)
+- `build/ConvertTo-DocumentationHomepage.ps1` — README-to-homepage generator
+- `build/Test-Documentation.ps1` — the documentation gate: relative links,
+  heading anchors, terminology casing, and drift between a generated file and
+  its source
+- `.config/DocumentationRules.psd1` — per-project gate rules
+- `.github/workflows/docs.yml`, `docs-quality.yml`, plus `docs-ci.yml` /
+  `docs-deploy.yml` (installed via `setup-docs-workflow.ps1`)
+
+Idempotent: an existing file is left alone and reported as skipped unless
+`-Overwrite` is passed, so the command can be re-run to pick up upstream fixes.
+`-NoHomepage`, `-SkipWorkflow`, and `-SkipGate` narrow the install; `-ScriptDir`
+(default `build`) and `-ConfigDir` (default `.config`) relocate the PowerShell
+tooling and rules for projects that use different conventions.
 
 The `docs/` directory is a self-contained overlay copied over the base image's
 `/template` at build time: author markdown under `docs/docs/`, and override the
 config/sidebar via `docs/docusaurus.config.ts` / `docs/sidebar.ts`.
 
-## `scripts/docs.ps1` - Local Live Server
+## `scripts/preview-docs.ps1` - Local Live Server
 
-Run-only helper for local development. Runs the published base image (pulling it
-if missing) and bind-mounts `./docs` over `/template` for hot reload. It does not
-build the static site — that happens in CI via `scripts/docs-build.ps1`.
+Run-only helper for local development **of this template itself**. Runs the
+published base image (pulling it if missing) and bind-mounts `./docs` over
+`/template` for hot reload. It does not build the static site — that happens in
+CI via `scripts/docs-build.ps1`.
+
+This is not the `docs.ps1` that `Invoke-SetupDocs.ps1` installs into a
+consuming project's root — that is a separate script under
+`scripts/template/docs.ps1`, built and run by the consumer as `./docs.ps1`.
 
 **Usage:**
 
 ```powershell
 # Serve http://localhost:3000/docs with hot reload
-.\scripts\docs.ps1
+.\scripts\preview-docs.ps1
 
 # Use a different host port
-.\scripts\docs.ps1 -Port 8080
+.\scripts\preview-docs.ps1 -Port 8080
 ```
 
 ## `scripts/docs-build.ps1` - In-Image Static Build

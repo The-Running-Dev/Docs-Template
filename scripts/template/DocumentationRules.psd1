@@ -35,6 +35,7 @@
         'node_modules'
     )
 
+    # --- GeneratedFiles:start ---
     # Files generated from another file, checked for drift rather than scanned.
     # Each entry names the generated file, its source, and the script that
     # produces the expected content, all relative to the project root. The
@@ -42,6 +43,10 @@
     #
     # Set SiteUrl to the published origin, with a trailing slash, so absolute
     # links in the README resolve to site-relative links on the homepage.
+    #
+    # The start/end markers above and below are load-bearing: Invoke-SetupDocs.ps1
+    # locates this exact block by those two comment lines to remove it entirely
+    # when -NoHomepage is passed. Keep them if you edit this block by hand.
     GeneratedFiles = @(
         @{
             Path = 'docs/docs/index.md'
@@ -55,6 +60,7 @@
             }
         }
     )
+    # --- GeneratedFiles:end ---
 
     # Individual files excluded from scanning, relative to the project root.
     ExcludedFiles = @(

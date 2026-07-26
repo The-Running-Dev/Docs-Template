@@ -1,6 +1,6 @@
 # TODO
 
-Last updated: 2026-07-26
+Last updated: 2026-07-26 (added P1.13)
 
 This TODO is based on the current repository audit (code, docs, tests, API package, and workflows).
 
@@ -142,6 +142,67 @@ Acceptance criteria:
 - `src/theme/NotFound/Content/__tests__/index.test.tsx` still passes unchanged
   for a consumer that configures nothing.
 
+## P1 - Documentation Gate System (Invoke-SetupDocs)
+
+Raised by the review of PR #38 (`feat/invoke-setupdocs`, adds
+`scripts/Invoke-SetupDocs.ps1` and the documentation gate under
+`scripts/template/`).
+
+### 13) Homepage generator does not rewrite relative README links
+
+Confirmed 2026-07-26. `ConvertTo-DocumentationHomepage.ps1` rewrites the
+absolute `SiteUrl` to `/`, but does nothing with relative links. A README that
+links to another file in the repository is valid at the repository root and
+broken once copied into `docs/docs/index.md`, because the target is now one
+directory level too shallow.
+
+Reproduction:
+
+```
+README.md (repo root):        See [the guide](docs/guide.md).
+docs/docs/index.md (copied):  See [the guide](docs/guide.md).
+                               → resolves to docs/docs/docs/guide.md, which
+                                 does not exist.
+```
+
+Running the gate against a fresh install with this README produces:
+
+```
+docs/docs/index.md:8:17 [Error] MarkdownLink: Link target 'docs/guide.md' does not exist.
+```
+
+So a fresh install can fail its own gate on the very first run, for any
+project whose README links to another file in the repository — not a rare
+case.
+
+Candidate fixes, not yet chosen:
+
+- **Rewrite relative links to absolute repo-host URLs.** Add a `-RepoUrl`
+  parameter (e.g. `https://github.com/org/repo`) to
+  `ConvertTo-DocumentationHomepage.ps1`; rewrite `docs/guide.md` to
+  `https://github.com/org/repo/blob/main/docs/guide.md` during generation, the
+  same way `SiteUrl` is already rewritten. Correct on both the code host and
+  the published site. Needs the parameter threaded through
+  `Invoke-SetupDocs.ps1`, the rules file `Arguments`, and `docs.ps1`, plus a
+  decision on the default branch name.
+- **Exclude generated files from link scanning.** Add
+  `docs/docs/index.md` to `ExcludedFiles` in `DocumentationRules.psd1`. One
+  line, but the gate then says nothing about broken links in the one file most
+  likely to contain README-authored links — Docusaurus's own broken-link check
+  becomes the only backstop, and that check defaults to `'warn'`, not `'throw'`.
+
+- [ ] Decide between the two approaches above (or another).
+- [ ] Implement the fix in `ConvertTo-DocumentationHomepage.ps1` and/or
+      `DocumentationRules.psd1`.
+- [ ] Add a regression test/fixture: a README with a relative link, verifying
+      the gate passes after the fix.
+
+Acceptance criteria:
+
+- A project with a README containing relative links to other repository files
+  passes the gate immediately after `Invoke-SetupDocs.ps1`, with no manual
+  edits.
+
 ## P2 - API Deferred Scope and Hygiene
 
 ### 6) Move API to Phase 2 (single scope)
@@ -196,9 +257,10 @@ Acceptance criteria:
 4. P1.3/P1.4 docs + workflow consistency pass.
 5. P1.5 stricter coverage policy + enforcement.
 6. P1.12 restore this site's 404 navigation.
-7. P2.6 API moved out of default path and documented as Phase 2.
-8. P2.7 API keep/remove decision checkpoint.
-9. P2 hygiene and backlog cleanup.
+7. P1.13 fix the homepage generator's relative-link handling.
+8. P2.6 API moved out of default path and documented as Phase 2.
+9. P2.7 API keep/remove decision checkpoint.
+10. P2 hygiene and backlog cleanup.
 
 ## Open Decisions (Need Product/Owner Input)
 
