@@ -117,6 +117,23 @@ of this site's own build. They exist to be copied.
 `dockerignore` is stored without its leading dot so it is neither hidden in the
 template nor applied to the template's own build context.
 
+`docs-ci.yml` and `docs-deploy.yml` are not copied by the installer directly. It
+delegates to `scripts/setup-docs-workflow.ps1`, which already owned that job and
+reports those two files itself — which is why the installer's summary notes them
+separately rather than counting them.
+
+### Per-project rules
+
+`DocumentationRules.psd1` is the one installed file a project is expected to
+edit. It carries the terminology rules, the path segments and files to skip, and
+the `GeneratedFiles` entries the drift check reads.
+
+The shipped defaults are deliberately **generic** — product names any project
+would want spelled consistently, such as `GitHub`, `PowerShell`, `TypeScript`,
+`Docusaurus`, and `macOS`. They are a starting point, not a policy. The rule that
+usually earns its keep is the one a project adds: its own product name and the
+misspellings it keeps attracting.
+
 ### The homepage generator
 
 `ConvertTo-DocumentationHomepage.ps1` returns what `docs/docs/index.md` should
@@ -261,6 +278,32 @@ resolved path is re-checked for containment.
 emitted as single-quoted YAML scalars with newlines collapsed. A raw newline in a
 title would otherwise close the front matter block early and let arbitrary keys be
 injected into the generated page.
+
+## Verifying a change to the system
+
+Changes here are hard to test from inside the template, because the template is
+not shaped like a consumer. Verify against a throwaway repository instead — an
+empty directory with `git init` and a README is enough. The gate needs the `.git`
+marker to find the repository root.
+
+- Install into it and confirm every expected artifact lands.
+- Run again with no switches: nothing should change, and the summary should say
+  what it skipped.
+- Run with `-Overwrite`: files are replaced, and the gate still passes — which
+  shows the install is self-consistent rather than merely quiet.
+- Run with `-WhatIf`: every action is reported and no file is written.
+- `./docs.ps1 -BuildOnly` builds, and the site compiles with no broken links.
+- `./build/Test-Documentation.ps1` passes on the scaffolded content.
+- Break each rule on purpose and confirm it fires: a dangling relative link, a
+  bad same-document anchor, a bad cross-document anchor, a terminology
+  violation, and a README edited without regenerating the homepage.
+- Run with `-NoHomepage`: no `GeneratedFiles` entry, no generator installed, and
+  no drift finding for a file this project does not generate.
+- Run with a non-default `-ScriptDir` and `-ConfigDir` and confirm the gate still
+  runs from the relocated paths.
+
+A regression test is only worth having if it fails without the fix. When adding
+one, revert the fix and confirm the test goes red before keeping it.
 
 ## Constraints worth knowing
 
