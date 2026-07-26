@@ -49,13 +49,15 @@ graph LR
   end
   subgraph image["ghcr.io/the-running-dev/docs-template"]
     D["/template/docusaurus.config.ts"]
-    E["/template/sidebars.ts"]
+    E["/template/sidebar.ts"]
+    S["/template/sidebars.ts<br/>(the template's own, now unused)"]
     F["/template/docs/**"]
     G["/template/node_modules"]
   end
-  A -->|overlay| D
-  B -->|overlay| E
-  C -->|overlay| F
+  A -->|replaces| D
+  B -->|lands beside| E
+  C -->|replaces| F
+  D -.->|sidebarPath: ./sidebar.ts| E
   G -.->|already present| image
 ```
 
@@ -63,6 +65,18 @@ The overlay is a plain recursive file copy performed by `scripts/docs-build.ps1`
 which runs **inside** the image. Because it copies every file over the template
 root preserving relative paths, a consumer can override anything — not only
 Markdown, but `config/**`, `src/**`, and the Docusaurus config itself.
+
+The sidebar is the one piece that is not a replacement, and it is worth
+understanding why. The template's own sidebar is `sidebars.ts`; a consumer's is
+`sidebar.ts`. Different names, so the overlay does not overwrite anything — the
+consumer's file simply lands beside the template's, which stays on disk and stops
+mattering.
+
+What actually redirects the site is the overlaid config: the template's root
+config sets `sidebarPath: './sidebars.ts'`, and the consumer's sets
+`sidebarPath: './sidebar.ts'`. A consumer that supplied a sidebar without also
+overlaying the config would see no effect at all, because nothing would point at
+the file it added.
 
 ## Components
 
