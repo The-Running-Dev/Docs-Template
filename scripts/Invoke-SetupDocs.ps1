@@ -99,12 +99,40 @@ $skipped = [System.Collections.Generic.List[string]]::new()
 $replaced = [System.Collections.Generic.List[string]]::new()
 
 function Resolve-ProjectPath {
+    <#
+    .SYNOPSIS
+    Resolves -ProjectDir to a full path, creating it if it does not exist.
+
+    An existing path must be a directory; a file is rejected with a clear
+    error rather than silently accepted and used to build nonsensical paths
+    underneath it later.
+
+    Creation is gated behind ShouldProcess and the full path is always
+    computed and returned directly -- not read back from New-Item's result --
+    because New-Item is simulated under -WhatIf and returns $null, and
+    Set-StrictMode turns a .FullName access on that into a terminating error
+    instead of silently producing nothing.
+    #>
     param([Parameter(Mandatory)][string]$Path)
 
     if (Test-Path -LiteralPath $Path) {
+        if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+            throw "ProjectDir '$Path' exists but is not a directory."
+        }
         return (Resolve-Path -LiteralPath $Path).Path
     }
-    return (New-Item -ItemType Directory -Path $Path -Force).FullName
+
+    # Resolved against the current PowerShell location, not the process's raw
+    # working directory ([IO.Path]::GetFullPath uses the latter, which can
+    # differ from $PWD after Set-Location) -- and without requiring the path
+    # to exist, unlike Resolve-Path.
+    $fullPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+
+    if ($PSCmdlet.ShouldProcess($fullPath, 'Create directory')) {
+        New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
+    }
+
+    return $fullPath
 }
 
 function Set-ProjectFile {
