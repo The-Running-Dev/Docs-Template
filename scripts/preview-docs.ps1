@@ -30,9 +30,9 @@
     Project directory containing ./docs. Defaults to the current directory.
 
 .EXAMPLE
-    ./scripts/docs.ps1          # serve http://localhost:3000/docs with hot reload
+    ./scripts/preview-docs.ps1          # serve http://localhost:3000/docs with hot reload
 .EXAMPLE
-    ./scripts/docs.ps1 -Port 8080
+    ./scripts/preview-docs.ps1 -Port 8080
 #>
 
 [CmdletBinding()]

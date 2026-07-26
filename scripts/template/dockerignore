@@ -1,0 +1,7 @@
+# The preview image needs the Docusaurus overlay only. Everything below would
+# add layers without changing the site.
+node_modules
+artifacts
+build
+.git
+.github
