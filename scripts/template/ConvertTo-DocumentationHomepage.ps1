@@ -57,6 +57,29 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+function ConvertTo-YamlSingleQuotedScalar {
+    <#
+    .SYNOPSIS
+    Serializes a string as a single-line, single-quoted YAML scalar.
+
+    Front matter fields here are single-line browser-tab/meta-description
+    text, so an embedded newline is collapsed to a space rather than kept --
+    keeping it would either break the YAML block or require a block-scalar
+    style this file does not otherwise use, and either way a raw newline is
+    exactly what lets a value close the front matter early and inject
+    fabricated keys after it. Embedded single quotes are doubled, which is
+    single-quoted YAML's own escape and cannot reopen the block either.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Value
+    )
+
+    $collapsed = ($Value -replace '\r\n?|\n', ' ').Trim()
+    return "'$($collapsed.Replace("'", "''"))'"
+}
+
 if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
     throw [System.IO.FileNotFoundException]::new(
         "README not found at '$ReadmePath'."
@@ -65,10 +88,10 @@ if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
 
 $frontMatterLines = @(
     '---'
-    "title: $Title"
+    "title: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)"
 )
 if (-not [string]::IsNullOrWhiteSpace($Description)) {
-    $frontMatterLines += "description: $Description"
+    $frontMatterLines += "description: $(ConvertTo-YamlSingleQuotedScalar -Value $Description)"
 }
 $frontMatterLines += @(
     'sidebar_position: 1'

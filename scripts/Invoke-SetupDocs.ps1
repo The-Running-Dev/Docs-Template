@@ -195,6 +195,28 @@ function Copy-TemplateFile {
     Set-ProjectFile -Destination $Destination -Content $content -Relative $Relative
 }
 
+function ConvertTo-YamlSingleQuotedScalar {
+    <#
+    .SYNOPSIS
+    Serializes a string as a single-line, single-quoted YAML scalar.
+
+    Used for the no-README stub homepage's front matter. A raw, unescaped
+    -Title could otherwise contain a newline and an embedded '---', closing
+    the front matter block early and injecting fabricated keys after it --
+    confirmed against ConvertTo-DocumentationHomepage.ps1's original
+    unescaped interpolation before this fix. Collapsing newlines and doubling
+    embedded single quotes closes both paths off entirely.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Value
+    )
+
+    $collapsed = ($Value -replace '\r\n?|\n', ' ').Trim()
+    return "'$($collapsed.Replace("'", "''"))'"
+}
+
 function ConvertTo-DockerTagSegment {
     <#
     .SYNOPSIS
@@ -226,11 +248,55 @@ function ConvertTo-DockerTagSegment {
     return $slug
 }
 
+function Resolve-ContainedProjectDirectory {
+    <#
+    .SYNOPSIS
+    Resolves a caller-supplied relative directory (-ScriptDir / -ConfigDir)
+    and guarantees it stays inside the project root.
+
+    Rejects a rooted path (an absolute path, on Windows or Unix) and any '..'
+    segment outright -- IsPathRooted alone is not enough, since a traversal
+    like '..\..\evil' is not rooted but still escapes the project root once
+    resolved. The combined path is then canonicalized and containment is
+    re-checked as a second, independent guard, so a separator or encoding
+    trick that slips past the first two checks still cannot resolve outside
+    -ProjectRoot.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string] $Value,
+
+        [Parameter(Mandatory)]
+        [string] $ParameterName,
+
+        [Parameter(Mandatory)]
+        [string] $ProjectRoot
+    )
+
+    if ([IO.Path]::IsPathRooted($Value)) {
+        throw "-$ParameterName must be a path relative to the project, not rooted: '$Value'."
+    }
+
+    if (@($Value -split '[\\/]') -contains '..') {
+        throw "-$ParameterName must not contain '..' segments: '$Value'."
+    }
+
+    $resolved = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $Value))
+    $normalizedRoot = $ProjectRoot.TrimEnd('\', '/')
+
+    if ($resolved -ne $normalizedRoot -and
+        -not $resolved.StartsWith($normalizedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "-$ParameterName resolves outside the project directory: '$Value' -> '$resolved'."
+    }
+
+    return $resolved
+}
+
 $projectPath = Resolve-ProjectPath -Path $ProjectDir
 $docsDir = Join-Path $projectPath 'docs'
 $contentDir = Join-Path $docsDir 'docs'
-$scriptTarget = Join-Path $projectPath $ScriptDir
-$configTarget = Join-Path $projectPath $ConfigDir
+$scriptTarget = Resolve-ContainedProjectDirectory -Value $ScriptDir -ParameterName 'ScriptDir' -ProjectRoot $projectPath
+$configTarget = Resolve-ContainedProjectDirectory -Value $ConfigDir -ParameterName 'ConfigDir' -ProjectRoot $projectPath
 $workflowDir = Join-Path $projectPath '.github/workflows'
 
 if ([string]::IsNullOrWhiteSpace($Title)) {
@@ -307,9 +373,13 @@ if ($generateHomepage) {
     Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
 }
 elseif (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
+    # Collapsed once and reused for both the front matter title and the
+    # heading, so a -Title containing a newline shows the same value in each
+    # place instead of silently differing between them.
+    $safeTitle = ($Title -replace '\r\n?|\n', ' ').Trim()
     Set-ProjectFile `
         -Destination $indexPath `
-        -Content "---`ntitle: $Title`nsidebar_position: 1`n---`n`n# $Title`n" `
+        -Content "---`ntitle: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)`nsidebar_position: 1`n---`n`n# $safeTitle`n" `
         -Relative 'docs/docs/index.md'
 }
 
