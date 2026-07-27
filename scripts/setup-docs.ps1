@@ -570,7 +570,12 @@ if (-not $WorkflowsOnly) {
             (Get-Content -LiteralPath $existingConfig -Raw),
             "routeBasePath:\s*'([^']*)'")
 
-        if ($existingMatch.Success -and $existingMatch.Groups[1].Value -ne $RouteBasePath) {
+        # Non-empty only: an empty routeBasePath is not a value worth preserving,
+        # and adopting it would surface later as a ValidateNotNullOrEmpty failure
+        # inside the homepage generator rather than anything a reader could act on.
+        if ($existingMatch.Success -and
+            -not [string]::IsNullOrWhiteSpace($existingMatch.Groups[1].Value) -and
+            $existingMatch.Groups[1].Value -ne $RouteBasePath) {
             $effectiveRouteBasePath = $existingMatch.Groups[1].Value
             Write-Host (
                 "[SETUP] Keeping this project's routeBasePath '$effectiveRouteBasePath' " +
