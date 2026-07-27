@@ -1,5 +1,12 @@
 # docs-template — removing `src/pages` left consumers with no root page
 
+**Status:** Open
+**Severity:** medium — silently breaks the canonical URL of every consumer site
+using the default `routeBasePath`
+**Labels:** `bug`, `consumer-impact`
+**Found:** follow-up to #44, verified against the CI-built Pages artifact for
+`The-Running-Dev/SubZeroDev.WinGet`
+
 Follow-up to the `src/pages` leakage fix. That fix is **confirmed working** — this
 is the side effect it introduced.
 
