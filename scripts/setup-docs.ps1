@@ -20,6 +20,14 @@
     as skipped, which matters because the workflows are kept byte-identical to
     this template so the command can be re-run to pick up upstream fixes.
 
+    Upgrading from a version that installed four workflow files also deletes
+    the two now retired, docs.yml and docs-quality.yml, reporting them as
+    Removed. They are not merely redundant: docs.yml drives the other two with
+    `uses:` and neither declares workflow_call any more, and docs-quality.yml
+    reports a check whose name now collides with docs-ci.yml's gate job. This
+    happens on any run that installs workflows, with or without -Overwrite,
+    since leaving them behind leaves the branch red either way.
+
     Only files this script owns are written. It never edits a workflow or script
     the project author wrote, which is why the gate and build live in their own
     docs-ci.yml rather than jobs appended to an existing test workflow. Deploy
@@ -100,6 +108,23 @@ $templateDir = Join-Path $scriptRoot 'template'
 $created = [System.Collections.Generic.List[string]]::new()
 $skipped = [System.Collections.Generic.List[string]]::new()
 $replaced = [System.Collections.Generic.List[string]]::new()
+$removed = [System.Collections.Generic.List[string]]::new()
+
+# Workflow files earlier versions of this script installed, which the current
+# two-file layout replaces. Left in place they do not merely clutter -- they
+# break:
+#
+#   docs.yml         calls docs-ci.yml and docs-deploy.yml with `uses:`, and
+#                    neither declares workflow_call any more, so every run
+#                    fails outright.
+#   docs-quality.yml runs the gate a second time under the job name
+#                    'Documentation links and terminology' -- byte-identical
+#                    to the new gate job's name, so two different workflows
+#                    report the same check context.
+#
+# Removed rather than reported, because a re-run is how a project picks up
+# upstream fixes, and an upgrade that leaves the branch red is not an upgrade.
+$retiredWorkflows = @('docs.yml', 'docs-quality.yml')
 
 function Resolve-ProjectPath {
     <#
@@ -175,6 +200,31 @@ function Set-ProjectFile {
     [IO.File]::WriteAllText($Destination, ($Content -replace "`r`n", "`n"), [Text.UTF8Encoding]::new($false))
 
     if ($exists) { $replaced.Add($Relative) } else { $created.Add($Relative) }
+}
+
+function Remove-RetiredFile {
+    <#
+    .SYNOPSIS
+    Deletes one workflow file a previous version of this script installed.
+
+    Scoped deliberately narrowly: only the fixed $retiredWorkflows names, only
+    under .github/workflows, and only files -- never directories, never a
+    caller-supplied path. This script installed these files and no longer
+    does, so removing them on the next run is what makes an upgrade land in a
+    working state rather than a half-migrated one.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string]$Relative
+    )
+
+    if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) { return }
+
+    if ($PSCmdlet.ShouldProcess($Destination, 'Remove retired workflow')) {
+        Remove-Item -LiteralPath $Destination -Force
+        $removed.Add($Relative)
+    }
 }
 
 function Copy-TemplateFile {
@@ -488,6 +538,14 @@ if (-not $SkipWorkflow) {
     Copy-TemplateFile -Name 'docs-deploy.yml' `
         -Destination (Join-Path $workflowDir 'docs-deploy.yml') `
         -Relative '.github/workflows/docs-deploy.yml'
+
+    # Runs unconditionally, not only under -Overwrite: the retired files break
+    # the two installed above whether or not those were themselves replaced,
+    # so a plain re-run has to clear them too.
+    foreach ($retired in $retiredWorkflows) {
+        Remove-RetiredFile -Destination (Join-Path $workflowDir $retired) `
+            -Relative ".github/workflows/$retired"
+    }
 }
 
 # --- Summary ----------------------------------------------------------------
@@ -496,6 +554,7 @@ Write-Host ''
 foreach ($group in @(
         @{ Label = 'Created';  Items = $created;  Color = 'Green' }
         @{ Label = 'Replaced'; Items = $replaced; Color = 'Yellow' }
+        @{ Label = 'Removed';  Items = $removed;  Color = 'Magenta' }
         @{ Label = 'Skipped';  Items = $skipped;  Color = 'DarkGray' }
     )) {
     if ($group.Items.Count -eq 0) { continue }

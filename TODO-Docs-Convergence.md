@@ -115,6 +115,33 @@ real `docker run` build, not just by reading:
       against `main`'s unmodified script. Not fixed here — out of scope for a
       workflow-file consolidation — but tracked below for Phase 4.
 
+### Upgrade path — found in final review, fixed
+
+Collapsing four workflow files into two left every *existing* consumer broken
+on upgrade, because the installer wrote the two new files but never removed
+the two it had retired:
+
+- `docs.yml` drives the other workflows with `uses:`, and neither `docs-ci.yml`
+  nor `docs-deploy.yml` declares `workflow_call` any more — so it fails
+  outright on every run.
+- `docs-quality.yml` runs the gate a second time under the job name
+  `Documentation links and terminology`, byte-identical to the new gate job's
+  name, so two different workflows report the same check context.
+
+Reproduced by installing with `main`'s installer, then upgrading with the new
+one and observing all four files still present. Fixed by having the installer
+delete both retired files whenever it installs workflows.
+
+- [x] `Remove-RetiredFile` deletes only the two fixed names, only under
+      `.github/workflows`, only files — never a caller-supplied path.
+- [x] Runs with or without `-Overwrite`: the retired files break the installed
+      ones either way, so a plain re-run has to clear them too.
+- [x] Reported under a `Removed` heading alongside Created/Replaced/Skipped.
+- [x] Verified: `-Overwrite` upgrade cleans up, plain re-run cleans up,
+      `-WhatIf` reports without deleting, a fresh install prints no spurious
+      `Removed` section, and `-SkipWorkflow` leaves all four files untouched
+      since the script is not managing workflows on that path.
+
 ### Follow-up found during Phase 1 (not yet fixed)
 
 - [ ] `scripts/setup-docs.ps1`'s `Copy-TemplateFile` call for
