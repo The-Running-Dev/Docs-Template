@@ -63,8 +63,9 @@
     Documentation image the installed files build on. Written to all four
     places an install references it -- docs/Dockerfile's BASE_IMAGE argument,
     docs.ps1's default, and the container image in both workflows -- so a
-    project pinning a date tag or using a fork or private mirror does not have
-    to hand-edit each one. Defaults to the published image at :latest.
+    project using a fork, a private mirror, or a pinned digest does not have to
+    hand-edit each one. Defaults to the published image at :latest, which is
+    the only tag the release workflow publishes.
 
 .PARAMETER NoHomepage
     Do not generate the homepage from the README, and do not register it for

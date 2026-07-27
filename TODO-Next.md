@@ -7,8 +7,7 @@ large.
 
 Decided: keep publishing on tag push and manual dispatch until 1.0 is
 formalized. No change to `publish.yml`. The container image keeps publishing
-from `main` on its own cadence, which is fine because date tags are always
-unique.
+from `main` on its own cadence as `:latest`.
 
 Revisit at 1.0, and note two things that will matter then:
 
@@ -19,7 +18,8 @@ Revisit at 1.0, and note two things that will matter then:
   deprecated but never renamed, so confirm the public name before publishing.
 
 Also worth deciding then: whether the image should carry `:1.0.0` alongside
-`:latest` and the date tag, so an image can be matched to a package version.
+`:latest`, so an image can be matched to a package version. The image now
+publishes `:latest` only.
 
 ## 2. Gaps Found During the Rename
 
