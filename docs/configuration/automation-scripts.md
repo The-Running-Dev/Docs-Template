@@ -107,6 +107,31 @@ Key parameters: `-Tag` (default `ghcr.io/the-running-dev/docs-template:latest`),
 `-Token`. With `-Token` the script logs in via `--password-stdin` before
 pushing; without it, it assumes you are already authenticated.
 
+## `scripts/setup-docs-workflow.ps1` - Docs Workflow Installer
+
+Installs only the two documentation workflows (`docs-ci.yml`, `docs-deploy.yml`)
+into a caller repository, leaving everything else that project has alone. Use it
+to refresh the workflows of a repository that already has the rest of the
+documentation system.
+
+A thin wrapper over `setup-docs.ps1 -WorkflowsOnly`: the workflow files are
+templated rather than copied — the gate job is excised under `-SkipGate` and
+`-BaseImage` is substituted into both — so that logic lives in one place.
+
+Key parameters: `-CallerProjectDir` (default `.`), `-TargetRelativeDir` (default
+`.github/workflows`), `-BaseImage`, `-SkipGate`, `-Overwrite`. Supports
+`-WhatIf`.
+
+**Usage:**
+
+```powershell
+# Install both docs workflows into a caller repository
+.\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller"
+
+# Refresh them in place
+.\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller" -Overwrite
+```
+
 ## `template-build.ps1` - Development Server Launcher
 
 **⚠️ Note:** This script has been simplified and now runs the development server directly in the current terminal rather than a separate window.

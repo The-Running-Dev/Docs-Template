@@ -78,6 +78,17 @@
     Install no documentation gate: no checker, no rules, and the
     'documentation' job is removed from the installed docs-ci.yml.
 
+.PARAMETER WorkflowsOnly
+    Install only the GitHub Actions workflows, leaving the Docusaurus overlay,
+    preview script, homepage, and gate files alone. Use it to refresh the
+    workflows of a project that already has the rest, without touching
+    anything else. Mutually exclusive with -SkipWorkflow.
+
+.PARAMETER WorkflowDir
+    Where the workflows are installed, relative to the project. Defaults to
+    '.github/workflows', which is the only location GitHub Actions reads; it
+    is a parameter so a caller staging files elsewhere can still use this.
+
 .PARAMETER Overwrite
     Replace files that already exist.
 
@@ -102,6 +113,8 @@ param(
     [Parameter()][switch]$NoHomepage,
     [Parameter()][switch]$SkipWorkflow,
     [Parameter()][switch]$SkipGate,
+    [Parameter()][switch]$WorkflowsOnly,
+    [Parameter()][string]$WorkflowDir = '.github/workflows',
     [Parameter()][switch]$Overwrite
 )
 
@@ -441,7 +454,13 @@ $docsDir = Join-Path $projectPath 'docs'
 $contentDir = Join-Path $docsDir 'docs'
 $scriptTarget = Resolve-ContainedProjectDirectory -Value $ScriptDir -ParameterName 'ScriptDir' -ProjectRoot $projectPath
 $configTarget = Resolve-ContainedProjectDirectory -Value $ConfigDir -ParameterName 'ConfigDir' -ProjectRoot $projectPath
-$workflowDir = Join-Path $projectPath '.github/workflows'
+if ($WorkflowsOnly -and $SkipWorkflow) {
+    throw '-WorkflowsOnly and -SkipWorkflow are mutually exclusive: one installs nothing but workflows, the other installs everything except them.'
+}
+
+# Same containment guard as -ScriptDir/-ConfigDir: a rooted path or a '..'
+# segment would otherwise write outside the project entirely.
+$workflowDir = Resolve-ContainedProjectDirectory -Value $WorkflowDir -ParameterName 'WorkflowDir' -ProjectRoot $projectPath
 
 if ([string]::IsNullOrWhiteSpace($Title)) {
     $Title = Split-Path -Leaf $projectPath
@@ -453,143 +472,148 @@ Write-Host "[SETUP] Config:   $ConfigDir" -ForegroundColor Cyan
 
 # --- Docusaurus overlay -----------------------------------------------------
 
-foreach ($directory in @($docsDir, $contentDir)) {
-    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
-        if ($PSCmdlet.ShouldProcess($directory, 'Create directory')) {
-            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+# -WorkflowsOnly refreshes a project's workflows without touching the
+# Docusaurus overlay, preview script, homepage, or gate files it already
+# has. Everything up to the workflow section is what it skips.
+if (-not $WorkflowsOnly) {
+    foreach ($directory in @($docsDir, $contentDir)) {
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            if ($PSCmdlet.ShouldProcess($directory, 'Create directory')) {
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            }
         }
     }
-}
 
-# Without these, every install shipped the template's placeholder values --
-# title: '' most importantly, which Docusaurus rejects outright with
-# '"title" is not allowed to be empty', so the installed site could not build
-# until someone hand-edited it. 'title: '''' matches both the site title and
-# the navbar title, which should agree anyway.
-#
-# url is only substituted when -SiteUrl was given: the placeholder
-# 'https://example.com' is at least a valid absolute URL, and Docusaurus
-# rejects an empty one, so writing '' would trade one broken build for
-# another.
-#
-# onBrokenLinks ('warn') and routeBasePath ('docs') are deliberately left at
-# the template's values. Both are behavioural choices rather than unfilled
-# placeholders -- flipping routeBasePath to '/' would move every page's URL
-# for projects already serving from /docs.
-$configReplacements = @{
-    "title: ''"   = "title: '$(ConvertTo-JavaScriptSingleQuoted -Value $Title)'"
-    "tagline: ''" = "tagline: '$(ConvertTo-JavaScriptSingleQuoted -Value $Description)'"
-}
-
-if (-not [string]::IsNullOrWhiteSpace($SiteUrl)) {
-    $configReplacements["url: 'https://example.com'"] =
-        "url: '$(ConvertTo-JavaScriptSingleQuoted -Value $SiteUrl.TrimEnd('/'))'"
-}
-
-Copy-TemplateFile -Name 'docusaurus.config.ts' `
-    -Destination (Join-Path $docsDir 'docusaurus.config.ts') `
-    -Relative 'docs/docusaurus.config.ts' `
-    -Replace $configReplacements
-
-Copy-TemplateFile -Name 'sidebar.ts' `
-    -Destination (Join-Path $docsDir 'sidebar.ts') `
-    -Relative 'docs/sidebar.ts'
-
-Copy-TemplateFile -Name 'Dockerfile' `
-    -Destination (Join-Path $docsDir 'Dockerfile') `
-    -Relative 'docs/Dockerfile' `
-    -Replace @{
-        "ARG BASE_IMAGE=$defaultBaseImage" = "ARG BASE_IMAGE=$BaseImage"
+    # Without these, every install shipped the template's placeholder values --
+    # title: '' most importantly, which Docusaurus rejects outright with
+    # '"title" is not allowed to be empty', so the installed site could not build
+    # until someone hand-edited it. 'title: '''' matches both the site title and
+    # the navbar title, which should agree anyway.
+    #
+    # url is only substituted when -SiteUrl was given: the placeholder
+    # 'https://example.com' is at least a valid absolute URL, and Docusaurus
+    # rejects an empty one, so writing '' would trade one broken build for
+    # another.
+    #
+    # onBrokenLinks ('warn') and routeBasePath ('docs') are deliberately left at
+    # the template's values. Both are behavioural choices rather than unfilled
+    # placeholders -- flipping routeBasePath to '/' would move every page's URL
+    # for projects already serving from /docs.
+    $configReplacements = @{
+        "title: ''"   = "title: '$(ConvertTo-JavaScriptSingleQuoted -Value $Title)'"
+        "tagline: ''" = "tagline: '$(ConvertTo-JavaScriptSingleQuoted -Value $Description)'"
     }
 
-# Stored without the leading dot so it is not hidden, and not applied to this
-# template's own build context.
-Copy-TemplateFile -Name 'dockerignore' `
-    -Destination (Join-Path $docsDir '.dockerignore') `
-    -Relative 'docs/.dockerignore'
-
-Copy-TemplateFile -Name 'docs.ps1' `
-    -Destination (Join-Path $projectPath 'docs.ps1') `
-    -Relative 'docs.ps1' `
-    -Replace @{
-        "Join-Path `$root 'build' 'ConvertTo-DocumentationHomepage.ps1'" = "Join-Path `$root '$ScriptDir' 'ConvertTo-DocumentationHomepage.ps1'"
-        "Join-Path `$root '.config' 'DocumentationRules.psd1'" = "Join-Path `$root '$ConfigDir' 'DocumentationRules.psd1'"
-        "[string]`$Tag = 'project-docs'" = "[string]`$Tag = '$(ConvertTo-DockerTagSegment -Value $Title)-docs'"
-        "[string]`$BaseImage = '$defaultBaseImage'" = "[string]`$BaseImage = '$BaseImage'"
+    if (-not [string]::IsNullOrWhiteSpace($SiteUrl)) {
+        $configReplacements["url: 'https://example.com'"] =
+            "url: '$(ConvertTo-JavaScriptSingleQuoted -Value $SiteUrl.TrimEnd('/'))'"
     }
 
-# --- Homepage ---------------------------------------------------------------
+    Copy-TemplateFile -Name 'docusaurus.config.ts' `
+        -Destination (Join-Path $docsDir 'docusaurus.config.ts') `
+        -Relative 'docs/docusaurus.config.ts' `
+        -Replace $configReplacements
 
-$readmePath = Join-Path $projectPath 'README.md'
-$indexPath = Join-Path $contentDir 'index.md'
-$generateHomepage = -not $NoHomepage -and (Test-Path -LiteralPath $readmePath -PathType Leaf)
+    Copy-TemplateFile -Name 'sidebar.ts' `
+        -Destination (Join-Path $docsDir 'sidebar.ts') `
+        -Relative 'docs/sidebar.ts'
 
-if (-not $NoHomepage -and -not (Test-Path -LiteralPath $readmePath -PathType Leaf)) {
-    Write-Warning 'No README.md found; skipping homepage generation. Pass -NoHomepage to silence this.'
-}
-
-# Only install the generator when something actually runs it. With -NoHomepage
-# the gate has no drift check and docs.ps1 skips regeneration, so shipping it
-# would leave a script nothing calls.
-if ($generateHomepage) {
-    Copy-TemplateFile -Name 'ConvertTo-DocumentationHomepage.ps1' `
-        -Destination (Join-Path $scriptTarget 'ConvertTo-DocumentationHomepage.ps1') `
-        -Relative "$ScriptDir/ConvertTo-DocumentationHomepage.ps1"
-}
-
-if ($generateHomepage) {
-    $homepageScript = Join-Path $templateDir 'ConvertTo-DocumentationHomepage.ps1'
-    $content = & $homepageScript `
-        -ReadmePath $readmePath `
-        -Title $Title `
-        -Description $Description `
-        -SiteUrl $SiteUrl
-    Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
-}
-elseif (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
-    # Collapsed once and reused for both the front matter title and the
-    # heading, so a -Title containing a newline shows the same value in each
-    # place instead of silently differing between them.
-    $safeTitle = ($Title -replace '\r\n?|\n', ' ').Trim()
-    Set-ProjectFile `
-        -Destination $indexPath `
-        -Content "---`ntitle: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)`nsidebar_position: 1`n---`n`n# $safeTitle`n" `
-        -Relative 'docs/docs/index.md'
-}
-
-# --- Documentation gate -----------------------------------------------------
-
-if (-not $SkipGate) {
-    Copy-TemplateFile -Name 'Test-Documentation.ps1' `
-        -Destination (Join-Path $scriptTarget 'Test-Documentation.ps1') `
-        -Relative "$ScriptDir/Test-Documentation.ps1" `
+    Copy-TemplateFile -Name 'Dockerfile' `
+        -Destination (Join-Path $docsDir 'Dockerfile') `
+        -Relative 'docs/Dockerfile' `
         -Replace @{
-            "Join-Path `$repositoryRoot '.config' 'DocumentationRules.psd1'" = "Join-Path `$repositoryRoot '$ConfigDir' 'DocumentationRules.psd1'"
+            "ARG BASE_IMAGE=$defaultBaseImage" = "ARG BASE_IMAGE=$BaseImage"
         }
 
-    # The rules file carries this project's front matter and site origin, so the
-    # gate regenerates the homepage exactly as the preview script does.
-    $rules = Get-Content -LiteralPath (Join-Path $templateDir 'DocumentationRules.psd1') -Raw
-    $rules = $rules.Replace("Generator = 'build/ConvertTo-DocumentationHomepage.ps1'", "Generator = '$ScriptDir/ConvertTo-DocumentationHomepage.ps1'")
-    $rules = $rules.Replace("Title = 'Home'", "Title = '$($Title.Replace("'", "''"))'")
-    $rules = $rules.Replace("Description = ''", "Description = '$($Description.Replace("'", "''"))'")
-    $rules = $rules.Replace("SiteUrl = ''", "SiteUrl = '$($SiteUrl.Replace("'", "''"))'")
+    # Stored without the leading dot so it is not hidden, and not applied to this
+    # template's own build context.
+    Copy-TemplateFile -Name 'dockerignore' `
+        -Destination (Join-Path $docsDir '.dockerignore') `
+        -Relative 'docs/.dockerignore'
 
-    if (-not $generateHomepage) {
-        # Drop the GeneratedFiles block entirely rather than leave a check for a
-        # file this project does not generate. This also covers a project with
-        # no README, where the generator was never installed and the check would
-        # fail on a missing script rather than on real drift.
-        $rules = Remove-MarkedBlock -Content $rules `
-            -StartMarker '    # --- GeneratedFiles:start ---' `
-            -EndMarker '    # --- GeneratedFiles:end ---' `
-            -FileLabel 'DocumentationRules.psd1'
+    Copy-TemplateFile -Name 'docs.ps1' `
+        -Destination (Join-Path $projectPath 'docs.ps1') `
+        -Relative 'docs.ps1' `
+        -Replace @{
+            "Join-Path `$root 'build' 'ConvertTo-DocumentationHomepage.ps1'" = "Join-Path `$root '$ScriptDir' 'ConvertTo-DocumentationHomepage.ps1'"
+            "Join-Path `$root '.config' 'DocumentationRules.psd1'" = "Join-Path `$root '$ConfigDir' 'DocumentationRules.psd1'"
+            "[string]`$Tag = 'project-docs'" = "[string]`$Tag = '$(ConvertTo-DockerTagSegment -Value $Title)-docs'"
+            "[string]`$BaseImage = '$defaultBaseImage'" = "[string]`$BaseImage = '$BaseImage'"
+        }
+
+    # --- Homepage ---------------------------------------------------------------
+
+    $readmePath = Join-Path $projectPath 'README.md'
+    $indexPath = Join-Path $contentDir 'index.md'
+    $generateHomepage = -not $NoHomepage -and (Test-Path -LiteralPath $readmePath -PathType Leaf)
+
+    if (-not $NoHomepage -and -not (Test-Path -LiteralPath $readmePath -PathType Leaf)) {
+        Write-Warning 'No README.md found; skipping homepage generation. Pass -NoHomepage to silence this.'
     }
 
-    Set-ProjectFile `
-        -Destination (Join-Path $configTarget 'DocumentationRules.psd1') `
-        -Content $rules `
-        -Relative "$ConfigDir/DocumentationRules.psd1"
+    # Only install the generator when something actually runs it. With -NoHomepage
+    # the gate has no drift check and docs.ps1 skips regeneration, so shipping it
+    # would leave a script nothing calls.
+    if ($generateHomepage) {
+        Copy-TemplateFile -Name 'ConvertTo-DocumentationHomepage.ps1' `
+            -Destination (Join-Path $scriptTarget 'ConvertTo-DocumentationHomepage.ps1') `
+            -Relative "$ScriptDir/ConvertTo-DocumentationHomepage.ps1"
+    }
+
+    if ($generateHomepage) {
+        $homepageScript = Join-Path $templateDir 'ConvertTo-DocumentationHomepage.ps1'
+        $content = & $homepageScript `
+            -ReadmePath $readmePath `
+            -Title $Title `
+            -Description $Description `
+            -SiteUrl $SiteUrl
+        Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
+    }
+    elseif (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
+        # Collapsed once and reused for both the front matter title and the
+        # heading, so a -Title containing a newline shows the same value in each
+        # place instead of silently differing between them.
+        $safeTitle = ($Title -replace '\r\n?|\n', ' ').Trim()
+        Set-ProjectFile `
+            -Destination $indexPath `
+            -Content "---`ntitle: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)`nsidebar_position: 1`n---`n`n# $safeTitle`n" `
+            -Relative 'docs/docs/index.md'
+    }
+
+    # --- Documentation gate -----------------------------------------------------
+
+    if (-not $SkipGate) {
+        Copy-TemplateFile -Name 'Test-Documentation.ps1' `
+            -Destination (Join-Path $scriptTarget 'Test-Documentation.ps1') `
+            -Relative "$ScriptDir/Test-Documentation.ps1" `
+            -Replace @{
+                "Join-Path `$repositoryRoot '.config' 'DocumentationRules.psd1'" = "Join-Path `$repositoryRoot '$ConfigDir' 'DocumentationRules.psd1'"
+            }
+
+        # The rules file carries this project's front matter and site origin, so the
+        # gate regenerates the homepage exactly as the preview script does.
+        $rules = Get-Content -LiteralPath (Join-Path $templateDir 'DocumentationRules.psd1') -Raw
+        $rules = $rules.Replace("Generator = 'build/ConvertTo-DocumentationHomepage.ps1'", "Generator = '$ScriptDir/ConvertTo-DocumentationHomepage.ps1'")
+        $rules = $rules.Replace("Title = 'Home'", "Title = '$($Title.Replace("'", "''"))'")
+        $rules = $rules.Replace("Description = ''", "Description = '$($Description.Replace("'", "''"))'")
+        $rules = $rules.Replace("SiteUrl = ''", "SiteUrl = '$($SiteUrl.Replace("'", "''"))'")
+
+        if (-not $generateHomepage) {
+            # Drop the GeneratedFiles block entirely rather than leave a check for a
+            # file this project does not generate. This also covers a project with
+            # no README, where the generator was never installed and the check would
+            # fail on a missing script rather than on real drift.
+            $rules = Remove-MarkedBlock -Content $rules `
+                -StartMarker '    # --- GeneratedFiles:start ---' `
+                -EndMarker '    # --- GeneratedFiles:end ---' `
+                -FileLabel 'DocumentationRules.psd1'
+        }
+
+        Set-ProjectFile `
+            -Destination (Join-Path $configTarget 'DocumentationRules.psd1') `
+            -Content $rules `
+            -Relative "$ConfigDir/DocumentationRules.psd1"
+    }
 }
 
 # --- Workflows --------------------------------------------------------------
