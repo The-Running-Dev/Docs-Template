@@ -238,6 +238,12 @@
                     Description = 'Discovered from BaseImage.'
                 }
                 @{
+                    Name = 'RouteBasePath'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Where documentation is served, written to routeBasePath in the installed config. Defaults to the site root.'
+                }
+                @{
                     Name = 'NoHomepage'
                     Type = 'switch'
                     Mandatory = $false
