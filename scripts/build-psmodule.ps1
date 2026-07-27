@@ -29,20 +29,35 @@
     Path to the SubZeroDev.PSGenerator module manifest. When omitted the script
     looks for an already-installed module first, then a sibling source checkout
     -- the layout on a development machine, where PSGenerator sits next to this
-    repository.
+    repository -- and finally falls back to running the published generator
+    image, which is what CI uses since it has neither of the first two.
+
+.PARAMETER GeneratorImage
+    Generator image used for the container fallback. It carries the module on
+    its PowerShell module path and entrypoints to pwsh, so the build runs
+    inside it with this repository mounted at /workspace.
+
+.PARAMETER UseContainer
+    Skip the local lookups and go straight to the generator image. Useful to
+    reproduce exactly what CI does from a machine that also has a checkout.
 
 .EXAMPLE
     ./scripts/build-psmodule.ps1
 
 .EXAMPLE
     ./scripts/build-psmodule.ps1 -GeneratorPath ../SubZeroDev.PSGenerator/src/SubZeroDev.PSGenerator.psd1
+
+.EXAMPLE
+    ./scripts/build-psmodule.ps1 -UseContainer
 #>
 
 [CmdletBinding()]
 param(
     [Parameter()][string]$Output = 'artifacts/PSModule',
     [Parameter()][string]$Specification = 'PSModule/PSModule.psd1',
-    [Parameter()][string]$GeneratorPath
+    [Parameter()][string]$GeneratorPath,
+    [Parameter()][string]$GeneratorImage = 'ghcr.io/the-running-dev/subzerodev.psgenerator:latest',
+    [Parameter()][switch]$UseContainer
 )
 
 Set-StrictMode -Version 3.0
@@ -88,30 +103,111 @@ function Import-Generator {
         return $sibling
     }
 
-    throw (
-        'SubZeroDev.PSGenerator was not found. Pass -GeneratorPath, install the ' +
-        'module so Get-Module -ListAvailable finds it, or place a checkout at ' +
-        "'$sibling'."
-    )
+    # No local generator. The caller falls back to the published image, which
+    # is the normal path in CI -- a runner has neither an installed module nor
+    # a sibling checkout.
+    return $null
 }
 
-$generator = Import-Generator -Path $GeneratorPath
-Write-Host "[PSMODULE] Generator: $generator" -ForegroundColor Cyan
+function Invoke-GeneratorContainer {
+    <#
+    .SYNOPSIS
+    Runs the build inside the published generator image.
+
+    The image carries SubZeroDev.PSGenerator on its PowerShell module path and
+    entrypoints to pwsh, so the whole build is one `docker run` with this
+    repository mounted at the image's /workspace working directory.
+
+    Runs as the invoking user so the generated files are not left root-owned on
+    a Linux host, which would then need sudo to clean up or rebuild. id is not
+    available on Windows, where Docker Desktop handles ownership itself, so the
+    argument is only added when it can be resolved.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Image,
+        [Parameter(Mandatory)][string]$RepositoryRoot,
+        [Parameter(Mandatory)][string]$SpecificationRelative,
+        [Parameter(Mandatory)][string]$OutputRelative
+    )
+
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw (
+            'SubZeroDev.PSGenerator was not found locally and docker is not on PATH, ' +
+            'so the generator image cannot be used either. Pass -GeneratorPath, ' +
+            'install the module, or make docker available.'
+        )
+    }
+
+    # HOME=/tmp is not optional when --user is passed below. An arbitrary uid has
+    # no /etc/passwd entry in the image, so $HOME resolves to '/', which is not
+    # writable; pwsh then drops its startup cache
+    # (StartupProfileData-NonInteractive) into the working directory instead --
+    # and here that directory is the caller's repository root. Observed doing
+    # exactly that before this was added.
+    $arguments = @(
+        'run', '--rm'
+        '-v', "${RepositoryRoot}:/workspace"
+        '-w', '/workspace'
+        '-e', 'HOME=/tmp'
+    )
+
+    if ($IsLinux -or $IsMacOS) {
+        $userId = (& id -u 2>$null)
+        $groupId = (& id -g 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $userId -and $groupId) {
+            $arguments += @('--user', "${userId}:${groupId}")
+        }
+    }
+
+    # Forward-slash paths: the command runs inside a Linux container regardless
+    # of the host, so a Windows-style relative path would not resolve.
+    $specification = $SpecificationRelative.Replace('\', '/')
+    $output = $OutputRelative.Replace('\', '/')
+
+    $arguments += @(
+        $Image
+        '-NoProfile'
+        '-Command'
+        "Test-PSModuleSpecification -Specification './$specification' -ErrorAction Stop | Out-Null; " +
+        "Build-PSModule -Specification './$specification' -Output './$output' -ErrorAction Stop | Out-Null"
+    )
+
+    & docker @arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Generator container exited with code $LASTEXITCODE."
+    }
+}
+
+$generator = if ($UseContainer) { $null } else { Import-Generator -Path $GeneratorPath }
+
 Write-Host "[PSMODULE] Specification: $specificationPath" -ForegroundColor Cyan
 
-# Validate before building. Build-PSModule reports its own errors, but a
-# specification fault is worth failing on by itself: it means the description
-# is wrong, not that generation hit a problem.
-Test-PSModuleSpecification -Specification $specificationPath -ErrorAction Stop | Out-Null
-Write-Host '[PSMODULE] Specification is valid.' -ForegroundColor Green
-
 # Remove a previous build so a command deleted from the specification cannot
-# survive in the output as a stale file.
+# survive in the output as a stale file. Done before either path runs, so the
+# container build starts from the same clean state the local one does.
 if (Test-Path -LiteralPath $outputPath) {
     Remove-Item -LiteralPath $outputPath -Recurse -Force
 }
 
-Build-PSModule -Specification $specificationPath -Output $outputPath -ErrorAction Stop | Out-Null
+if ($generator) {
+    Write-Host "[PSMODULE] Generator: $generator" -ForegroundColor Cyan
+
+    # Validate before building. Build-PSModule reports its own errors, but a
+    # specification fault is worth failing on by itself: it means the description
+    # is wrong, not that generation hit a problem.
+    Test-PSModuleSpecification -Specification $specificationPath -ErrorAction Stop | Out-Null
+    Write-Host '[PSMODULE] Specification is valid.' -ForegroundColor Green
+
+    Build-PSModule -Specification $specificationPath -Output $outputPath -ErrorAction Stop | Out-Null
+}
+else {
+    Write-Host "[PSMODULE] Generator: $GeneratorImage (container)" -ForegroundColor Cyan
+    Invoke-GeneratorContainer `
+        -Image $GeneratorImage `
+        -RepositoryRoot $repositoryRoot `
+        -SpecificationRelative $Specification `
+        -OutputRelative $Output
+}
 
 $manifest = Join-Path $outputPath 'DocsTemplate.psd1'
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {

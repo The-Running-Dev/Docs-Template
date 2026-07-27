@@ -19,6 +19,13 @@
 - `pnpm serve`: Preview a production build.
 - `pnpm test` / `pnpm test:run` / `pnpm test:ui`: Vitest (CLI/UI); `pnpm test:coverage` for reports.
 - `pnpm lint` / `pnpm lint:fix`, `pnpm format` / `pnpm format:check`, `pnpm quality` for full checks.
+- `./scripts/build-psmodule.ps1`: generate the `DocsTemplate` PowerShell module
+  from `PSModule/PSModule.psd1` into `artifacts/PSModule`. The root `Dockerfile`
+  copies that to `/PSModule`, so it must run before `docker build`; all three
+  workflows run it. It uses a local SubZeroDev.PSGenerator when there is one and
+  otherwise falls back to the published generator image, which is what CI does —
+  no setup required either way. Never edit the output; fix the specification and
+  re-run.
 
 ## Coding Style & Naming Conventions
 
