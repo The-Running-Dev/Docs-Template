@@ -36,10 +36,15 @@ which is why this was not caught earlier:
 | `docs/Dockerfile` — consumer local preview        | yes (`rm -rf`)      | no leak |
 | `scripts/docs-build.ps1` — CI, and what publishes | **no**              | leaks   |
 
-A consumer's local preview therefore does not match their published site. This
-divergence is already described in `docs/getting-started/installing-the-docs-system.md`
-under "Serving path", where it was written up as a quirk rather than recognised as
-a defect. It is the defect.
+A consumer's local preview therefore does not match their published site, and
+**that divergence is currently documented nowhere.** An earlier draft of the
+consumer guide did describe it — the now-deleted `planning/AGENTS-docs-section.md`
+said "what sits at `/` differs by build path", framing it as a quirk rather than
+a defect. It was dropped when that file was condensed into
+`docs/getting-started/installing-the-docs-system.md`, whose "Serving path"
+section covers only `routeBasePath` and homepage link rewriting. So the one
+description of the symptom that existed was lost before anyone recognised it was
+the defect.
 
 `.dockerignore` already excludes `src/pages/*.md` and `src/pages/demos/`, so the
 image ships exactly the seven files the report lists — the exclusion mechanism is
@@ -50,19 +55,44 @@ in place and simply does not cover the rest.
 Removing the pages is not in question. What replaces the root is, and it changes
 behaviour for existing consumer sites either way.
 
-- **(a) Ship nothing.** `/` 404s. Cleanest isolation, and a consumer owns `/` by
-  adding `docs/src/pages/index.tsx`, which the overlay copies into place. Costs a
-  bare 404 at the root by default.
-- **(b) Ship an unbranded redirect** `/` → `/docs`. Better default behaviour, but
-  it is still a shipped page that shadows a consumer's own `index`, so it
-  re-creates a weaker version of the problem.
-- **(c) Set `routeBasePath: '/'`** in the installed config so docs serve from the
-  root. Removes the question entirely, but moves every existing consumer's URLs,
-  which the acceptance criteria forbid.
+First, two things established by experiment, against an image built with
+`src/pages` excluded:
 
-Recommendation: **(a)**, with the "how to own `/`" step documented. It is the only
-option that satisfies "a consumer can define `/` themselves without shadowing an
-image file". (c) is ruled out by the no-URL-churn criterion.
+- **Deleting the pages is mandatory, not one option among several.** Tested
+  against the _current_ image, setting `routeBasePath: '/'` makes the template's
+  `index.tsx` win the root and the README-derived homepage **disappear entirely** —
+  no README content anywhere on the site. A consumer supplying their own
+  `docs/src/pages/index.md` today gets `Duplicate routes found!` and wins only by
+  ordering.
+- Once the pages are gone, all three shapes below build cleanly with zero leaked
+  routes and zero duplicate warnings. The difference is where the README lands.
+
+| Option                                                    | README served at     | URL churn |
+| --------------------------------------------------------- | -------------------- | --------- |
+| **(a)** delete, keep `routeBasePath: 'docs'`              | `/docs/` only        | none      |
+| **(b)** delete, also generate a second README page at `/` | `/` **and** `/docs/` | none      |
+| **(c)** delete, set `routeBasePath: '/'`                  | `/` only             | yes       |
+
+**(b) is the weakest and should not be built.** Verified: it serves
+byte-identical content at two URLs. That means two generated files, two
+`GeneratedFiles` drift checks, and two pages competing in search results. The
+README already becomes a page; generating it twice does not give a consumer a
+homepage they own, it gives them the same homepage twice.
+
+**(c) is the strongest.** The README-derived page simply _is_ the site root — one
+copy, one URL, no redirect machinery and no second generator output. It also
+fixes a defect recorded elsewhere as unresolved: the homepage generator rewrites
+the published site origin to `/`, which only resolves when docs serve from the
+root. Confirmed under (c) a README link to `https://docs.example.com/guide`
+becomes `href="/guide"`; under (a) it still points at a route that does not exist.
+
+Recommendation: **(c) for new installs, (a) for existing ones** — the same code
+path. Delete `src/pages` from the image and default `routeBasePath: '/'` in the
+installed config. Existing consumers are untouched because the installer skips
+files that already exist; their config changes only under `-Overwrite`, which is
+opt-in. That meets the no-churn criterion without freezing new projects into the
+worse shape. The cost is that `/docs/*` and `/*` are then both in the wild, so the
+guide must state which shape a project is on.
 
 ### Tasks
 
@@ -75,8 +105,10 @@ image file". (c) is ruled out by the no-URL-churn criterion.
       removes `src/pages` there is dead. Remove it, or keep it as
       belt-and-braces with a comment saying which layer is authoritative.
 - [ ] Implement the chosen root behaviour and document how a consumer owns `/`.
-- [ ] Correct the "Serving path" section of the consumer guide, which currently
-      documents the leak as expected behaviour.
+- [ ] Extend the "Serving path" section of the consumer guide. It does not
+      currently mention leaked pages or the preview/CI divergence at all, so this
+      is new content rather than a correction, and it should describe the fixed
+      behaviour once P0 lands.
 
 Acceptance criteria (from the report, plus one):
 
