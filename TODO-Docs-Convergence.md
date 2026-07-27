@@ -85,7 +85,11 @@ single-file `docs-ci.yml` is not adopted.
 - [x] Declare the triggers without `paths:` filters, per the decision above, so
       a required check always reports.
 - [x] Bump both the payload and this repository's own workflows to the target
-      action versions in the table above. The Node 24 / Alpine-musl concern
+      action versions in the table above. **Corrected after the fact:** this
+      was recorded as done when only `scripts/template/*.yml` had been bumped.
+      This repository's own workflows stayed on `checkout@v4`,
+      `upload-pages-artifact@v3` and `deploy-pages@v4` until CI flagged the
+      Node 20 deprecation on the first real run. They now match the table. The Node 24 / Alpine-musl concern
       first recorded against this item is resolved — see "Decisions taken"
       above. The bump does not change the Node runtime at all, and GitHub
       ships a musl Node 24 for container jobs.
@@ -155,6 +159,37 @@ delete both retired files whenever it installs workflows.
       `-WhatIf` reports without deleting, a fresh install prints no spurious
       `Removed` section, and `-SkipWorkflow` leaves all four files untouched
       since the script is not managing workflows on that path.
+
+### Generator fallback broke in a containerized job — found by CI, fixed
+
+The first CI run failed `Build Documentation` with the specification "not
+found" at `/workspace/PSModule/PSModule.psd1`, while `test` passed. The split
+was the diagnosis: `test-and-coverage.yml` runs directly on the runner, and
+`release.yml` runs inside the build-agent container.
+
+The fallback bind-mounted the repository into a `docker run`. Inside a
+container job the repository lives at `/__w/<repo>/<repo>`, and `-v` paths are
+resolved by the Docker daemon on the **host**, where that path does not exist —
+so the mount silently resolved to an empty directory.
+
+The local "CI simulation" that preceded this gave false confidence: it removed
+the sibling checkout but still ran on the host, never reproducing a
+containerized job, which is the only condition that fails.
+
+- [x] Replaced the bind mount with `docker create` + `docker cp`, extracting the
+      generator module from the image and importing it locally. `docker cp`
+      streams through the CLI rather than asking the daemon to mount a path, so
+      it is indifferent to whether the caller is containerized. Nothing in the
+      image is executed, which also removes the `--user` and writable-`HOME`
+      workarounds the old approach needed.
+- [x] Both sources now converge on one native build path, so local and CI runs
+      execute identical code after the generator is resolved.
+- [x] Verified in the failing condition this time: a container with the
+      repository mounted at `/__w/...`, a path absent on the host, generates
+      all five commands. Also re-verified the local and `-UseContainer` paths,
+      with no staging directory or stray file left behind.
+- [ ] Delete this fallback once the build agent ships SubZeroDev.PSGenerator
+      itself. Extracting it from an image is a workaround at the wrong layer.
 
 ### Config substitution — found during Phase 1, fixed
 
