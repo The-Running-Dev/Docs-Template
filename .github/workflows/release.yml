@@ -252,6 +252,16 @@ jobs:
           DOTNET_CLI_TELEMETRY_OPTOUT: '1'
           DOTNET_NOLOGO: '1'
         run: |
+          # The workspace is owned by the runner's user while this job's
+          # container runs as root, so git's dubious-ownership check rejects
+          # the repository. GitVersion uses LibGit2Sharp, which enforces that
+          # check itself and fails with "repository path ... is not owned by
+          # current user" -- the actual error behind three earlier failures
+          # here. actions/checkout marks the directory safe only for the
+          # duration of its own step, so it has to be marked again for this one.
+          git config --global --add safe.directory $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw "Marking the workspace safe failed with exit code $LASTEXITCODE." }
+
           $toolPath = Join-Path $env:RUNNER_TEMP 'gitversion'
           dotnet tool install GitVersion.Tool --version '6.*' --tool-path $toolPath
           if ($LASTEXITCODE -ne 0) { throw "GitVersion install failed with exit code $LASTEXITCODE." }
