@@ -137,10 +137,17 @@ function Remove-TemporaryTree {
 
     A failure to clean up a temporary directory must never fail an install that
     already succeeded, so this warns rather than throws.
+
+    -WhatIf:$false is required, not incidental. -WhatIf on the script sets
+    $WhatIfPreference for the whole script scope, and this function inherits it,
+    so an unqualified Remove-Item reports "What if" and deletes nothing --
+    leaking the staged payload into TEMP on every dry run. Declining to declare
+    SupportsShouldProcess does not avoid that, because Remove-Item honors the
+    preference variable on its own.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSUseShouldProcessForStateChangingFunctions', '',
-        Justification = 'Deletes only a temporary directory this script created, and must run from finally even under -WhatIf; honoring ShouldProcess here would leak staging directories on every dry run.'
+        Justification = 'Deletes only a temporary directory this script created, and must run from finally even under -WhatIf; prompting or skipping here would leak staging directories on every dry run.'
     )]
     param([Parameter(Mandatory)][string]$Path)
 
@@ -149,7 +156,7 @@ function Remove-TemporaryTree {
     try {
         Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
             ForEach-Object { $_.Attributes = 'Normal' }
-        Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop -WhatIf:$false
     }
     catch {
         Write-Warning "Could not remove temporary directory '$Path': $($_.Exception.Message)"
@@ -193,7 +200,12 @@ function Get-PayloadFromImage {
     }
 
     try {
-        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+        # -WhatIf:$false because the payload is read, not installed: acquiring it
+        # is what makes a dry-run report accurate. Without this the staging
+        # directory is skipped under -WhatIf and `docker cp` -- a native command
+        # no preference variable reaches -- creates it anyway, which puts the
+        # tree outside this script's own cleanup accounting.
+        New-Item -ItemType Directory -Path $Destination -Force -WhatIf:$false | Out-Null
         Write-Step 'Copying the documentation payload out of the image ...'
         & docker cp "${containerId}:/template/scripts/template/." $Destination 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
@@ -288,7 +300,12 @@ if (Test-Path -LiteralPath $ProjectDir) {
     $projectPath = (Resolve-Path -LiteralPath $ProjectDir).Path
 }
 else {
-    $projectPath = (New-Item -ItemType Directory -Path $ProjectDir -Force).FullName
+    # -WhatIf:$false because every path below is resolved against $projectPath.
+    # Under -WhatIf an unqualified New-Item returns $null, and $null.FullName is
+    # a terminating error under Set-StrictMode, so a dry run against a project
+    # directory that does not exist yet fails before reporting anything. The
+    # directory is the one thing a dry run must create to describe the rest.
+    $projectPath = (New-Item -ItemType Directory -Path $ProjectDir -Force -WhatIf:$false).FullName
 }
 
 if (-not $PSBoundParameters.ContainsKey('Title') -or [string]::IsNullOrWhiteSpace($Title)) {
