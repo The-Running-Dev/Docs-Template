@@ -39,8 +39,8 @@ documentation gate, and the workflows that run them.
   heading anchors, terminology casing, and drift between a generated file and
   its source
 - `.config/DocumentationRules.psd1` — per-project gate rules
-- `.github/workflows/docs.yml`, `docs-quality.yml`, plus `docs-ci.yml` /
-  `docs-deploy.yml` (installed via `setup-docs-workflow.ps1`)
+- `.github/workflows/docs-ci.yml` (gate + build verification) and
+  `docs-deploy.yml` (build + deploy to Pages)
 
 Idempotent: an existing file is left alone and reported as skipped unless
 `-Overwrite` is passed, so the command can be re-run to pick up upstream fixes.
@@ -106,22 +106,6 @@ Key parameters: `-Tag` (default `ghcr.io/the-running-dev/docs-template:latest`),
 `-AdditionalTags`, `-Push`, `-Registry` (default `ghcr.io`), `-Username`,
 `-Token`. With `-Token` the script logs in via `--password-stdin` before
 pushing; without it, it assumes you are already authenticated.
-
-## `scripts/setup-docs-workflow.ps1` - Docs Workflow Installer
-
-Copies both split workflow templates (`docs-ci.yml`, `docs-deploy.yml`) into a
-caller repository under `.github/workflows`. Existing files are skipped unless
-`-Overwrite` is passed.
-
-**Usage:**
-
-```powershell
-# Copy both docs workflows to a caller repository
-.\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller"
-
-# Overwrite existing target files
-.\scripts\setup-docs-workflow.ps1 -CallerProjectDir "C:\path\to\caller" -Overwrite
-```
 
 ## `template-build.ps1` - Development Server Launcher
 
