@@ -36,7 +36,7 @@ This could lead to non-deterministic routing behavior.
 
 Which of the two wins depends on plugin processing order, not on anything the
 repository controls. This is the template repository's own homepage — distinct
-from the consumer root-404 problem planned in `template-fixes.md`, where
+from the consumer root-404 problem planned in `consumer-root-404.md`, where
 consumers get *no* root page. Here the template gets two.
 
 #### How to fix
@@ -503,7 +503,7 @@ Known open work recorded in `TODO-Next.md` (updated with #47) is not
 duplicated here: the `--user` asymmetry in `Invoke-DocsBuild`, no Pester
 harness for the PowerShell scripts, the missing `-BaseUrl` installer
 parameter, and five planning documents accumulating at the repository root.
-The consumer root-404 regression has its own plan in `template-fixes.md`.
+The consumer root-404 regression has its own plan in `consumer-root-404.md`.
 
 ## Not verified
 
