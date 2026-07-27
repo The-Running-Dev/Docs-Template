@@ -38,6 +38,7 @@ Other commands the image exposes:
 | `Invoke-SetupDocs`         | Install or update the whole system.                      |
 | `Invoke-SetupDocsWorkflow` | Install only the two workflows, leaving everything else. |
 | `Invoke-DocsBuild`         | Build the static site, the same way CI does.             |
+| `Invoke-DocsTest`          | Run the documentation gate.                              |
 
 `Invoke-DocsBuildImage` and `Invoke-PreviewDocs` are in the module too, but they
 drive Docker themselves, so they only run on a host — not inside the image.
@@ -100,7 +101,8 @@ Then the flow is automatic:
   uploads the Pages artifact, and deploys it.
 
 The published URL is the `url` plus `baseUrl` in `docs/docusaurus.config.ts`.
-`-SiteUrl` sets **`url` only** — `baseUrl` keeps the template's `/`. For a
+`-SiteUrl` sets **`url` only** — `baseUrl` keeps the template's `/`, and is
+independent of `-RouteBasePath`. For a
 GitHub Pages _project_ site, served at `https://<owner>.github.io/<repo>/`, that
 is wrong and every asset 404s, so set `baseUrl: '/<repo>/'` by hand after
 installing. A user or organisation site, or a custom domain served from the
@@ -110,10 +112,16 @@ _Environments → github-pages_.
 To reproduce what CI builds, without pushing:
 
 ```bash
-docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+docker run --rm -v "$PWD:/work" -w /work \
   ghcr.io/the-running-dev/docs-template:latest \
   Invoke-DocsBuild -SourceDocs /work/docs -OutputPath /work/artifacts/docs
 ```
+
+Note the missing `--user` here, unlike the install command above. `Invoke-DocsBuild`
+overlays your `docs/` onto the image's root-owned `/template` before building, so a
+non-root user cannot write there and the run fails with
+`Access to the path '/template/Dockerfile' is denied`. `Invoke-SetupDocs` writes
+into the mount instead, which is where `--user` matters.
 
 ## Local preview
 
@@ -157,6 +165,13 @@ published site for anything the homepage needs to reach.
 ./build/Test-Documentation.ps1 -Path README.md
 ```
 
+Those need PowerShell on the host. Without it, run the gate from the image:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest Invoke-DocsTest
+```
+
 | Rule             | Severity | Meaning                                                      |
 | ---------------- | -------- | ------------------------------------------------------------ |
 | `MarkdownLink`   | Error    | Relative link target does not exist on disk.                 |
@@ -176,18 +191,31 @@ rather than working around the gate.
 
 ## Serving path
 
-Documentation is served under `/docs` by default — the installed
-`docusaurus.config.ts` keeps `routeBasePath: 'docs'`. Two consequences:
+Documentation is served from the **site root** by default — the installer writes
+`routeBasePath: '/'`, so the README-derived `docs/docs/index.md` is your landing
+page at `/`.
 
-- `docs/docs/index.md` is the landing page of the documentation section at
-  `/docs/`, not the site root.
-- The homepage generator rewrites the published site origin to `/`, which assumes
-  serving from the root, so those rewritten links do not land on the generated
-  homepage.
+Pass `-RouteBasePath docs` to serve under `/docs` instead. Two things to know if
+you do:
 
-Setting `routeBasePath: '/'` makes both coherent, at the cost of moving every
-page's URL. The installer does not do it, because for a project already serving
-from `/docs` that is a breaking change rather than a fix.
+- **The theme links to `/`.** Its 404 page and the docs navbar both do, so with
+  nothing at the root Docusaurus reports two broken links your project never
+  wrote. Harmless under the shipped `onBrokenLinks: 'warn'`, a failed build if
+  you raise it to `'throw'`. You can supply your own root by adding
+  `docs/src/pages/index.md`, which the overlay copies into place.
+- **The homepage generator rewrites the published site origin to `/`**, which
+  assumes serving from the root, so under `/docs` those rewritten links do not
+  land on the generated homepage.
+
+Neither applies on the default. Re-running the installer with `-Overwrite` will
+**not** move an existing project: it keeps whatever `routeBasePath` your config
+already has, and says so, unless you pass `-RouteBasePath` explicitly.
+
+The template's own pages are not part of your site. Earlier images compiled
+`src/pages` from the image into every consumer build, so sites inherited `/`,
+`/cv`, `/portfolio`, `/projects` and `/admin/projects` under their own title.
+They are no longer shipped, and the build removes any that a stale image still
+carries.
 
 ## Before committing documentation changes
 

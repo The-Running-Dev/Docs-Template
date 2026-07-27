@@ -59,6 +59,28 @@ function Resolve-ExistingPath {
 $sourceRoot = Resolve-ExistingPath -Path $SourceDocs -Label 'Source docs directory'
 $templateRoot = Resolve-ExistingPath -Path $TemplateDir -Label 'Template directory'
 
+# Any src/pages the image still carries compiles into routes the consumer never
+# authored -- and takes the site root with it, which nothing in their docs can
+# displace. The image excludes src/pages for this reason (see .dockerignore), so
+# finding one here means that exclusion regressed.
+#
+# Checked before the overlay rather than after, so a consumer supplying their own
+# docs/src/pages is not mistaken for the leak. Deleted rather than thrown on: the
+# consumer's build should succeed, and warn loudly enough that the image gets
+# fixed.
+$templatePages = Join-Path $templateRoot 'src/pages'
+if (Test-Path -LiteralPath $templatePages) {
+    $leaked = @(Get-ChildItem -LiteralPath $templatePages -Recurse -File)
+    if ($leaked.Count -gt 0) {
+        Write-Warning (
+            "The base image carries $($leaked.Count) file(s) under src/pages. Those compile " +
+            'into routes this project did not author, including the site root. Removing them ' +
+            'for this build; the image needs rebuilding from a source tree that excludes them.'
+        )
+    }
+    Remove-Item -LiteralPath $templatePages -Recurse -Force
+}
+
 Write-Host "[DOCS-BUILD] Overlaying '$sourceRoot' over '$templateRoot' ..." -ForegroundColor Cyan
 
 # Recursively overlay every file from the source docs over the template root,

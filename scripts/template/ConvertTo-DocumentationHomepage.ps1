@@ -39,7 +39,10 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
+    # Defaults to README.md beside the project root rather than being mandatory:
+    # invoking this directly is a reasonable thing to do, and it used to fail
+    # with "missing mandatory parameters: ReadmePath" before doing anything.
+    [Parameter()]
     [ValidateNotNullOrEmpty()]
     [string]$ReadmePath,
 
@@ -51,7 +54,21 @@ param(
     [string]$Description = '',
 
     [Parameter()]
-    [string]$SiteUrl = ''
+    [string]$SiteUrl = '',
+
+    # Where documentation is served, matching routeBasePath in
+    # docusaurus.config.ts. Absolute links to -SiteUrl are rewritten to this, so
+    # a project serving under '/docs' gets links that resolve there instead of
+    # at a site root that has no page.
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
+    [string]$RouteBasePath = '/',
+
+    # Writes the document to this path instead of returning it. Without it the
+    # result goes to stdout, which is what setup-docs.ps1 and the documentation
+    # gate consume, so their behaviour is unchanged.
+    [Parameter()]
+    [string]$OutputPath
 )
 
 Set-StrictMode -Version 3.0
@@ -78,6 +95,24 @@ function ConvertTo-YamlSingleQuotedScalar {
 
     $collapsed = ($Value -replace '\r\n?|\n', ' ').Trim()
     return "'$($collapsed.Replace("'", "''"))'"
+}
+
+# -ReadmePath is optional, so resolve it before the guard below. Walks up for
+# the .git marker the same way the gate locates the project root, so running
+# this from anywhere inside the repository works.
+if ([string]::IsNullOrWhiteSpace($ReadmePath)) {
+    $searchDir = (Get-Location).Path
+    while ($searchDir -and -not (Test-Path -LiteralPath (Join-Path $searchDir '.git'))) {
+        $parent = Split-Path -Parent $searchDir
+        if ($parent -eq $searchDir) { $searchDir = $null; break }
+        $searchDir = $parent
+    }
+
+    if (-not $searchDir) {
+        throw 'Could not locate the project root (no .git found above the current directory). Pass -ReadmePath explicitly.'
+    }
+
+    $ReadmePath = Join-Path $searchDir 'README.md'
 }
 
 if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
@@ -107,7 +142,26 @@ $body = if ([string]::IsNullOrWhiteSpace($SiteUrl)) {
     $readme
 }
 else {
-    $readme.Replace($SiteUrl, '/')
+    # Trailing slash on both sides so '/docs' and '/docs/' behave the same and
+    # the result never doubles a separator.
+    $target = '/' + $RouteBasePath.Trim('/')
+    if ($target -ne '/') { $target += '/' }
+    $readme.Replace($SiteUrl, $target)
 }
 
-return $frontMatter + "`n" + $body
+$document = $frontMatter + "`n" + $body
+
+if ($PSBoundParameters.ContainsKey('OutputPath') -and -not [string]::IsNullOrWhiteSpace($OutputPath)) {
+    $outputDir = Split-Path -Parent $OutputPath
+    if ($outputDir -and -not (Test-Path -LiteralPath $outputDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    }
+
+    # LF and no BOM, matching how setup-docs.ps1 writes it, so the gate's
+    # byte-for-byte drift check sees the same content either way.
+    [IO.File]::WriteAllText($OutputPath, ($document -replace "`r`n", "`n"), [Text.UTF8Encoding]::new($false))
+    Write-Host "[HOMEPAGE] Wrote $OutputPath" -ForegroundColor Green
+    return
+}
+
+return $document

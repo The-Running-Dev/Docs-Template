@@ -54,10 +54,6 @@ RUN pnpm install --frozen-lockfile; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCOD
 # Copy the source code into the container.
 COPY . ./
 
-# Do not ship template docs in the base image so downstream projects can provide
-# their own docs without inherited sample content.
-RUN Remove-Item -Recurse -Force /template/docs -ErrorAction SilentlyContinue
-
 # The generated PowerShell module, embedded at the location Install-PSModule
 # retrieves from. Built by scripts/build-psmodule.ps1 from PSModule/PSModule.psd1
 # via SubZeroDev.PSGenerator, and self-contained -- the generator copies the
@@ -104,10 +100,11 @@ EXPOSE 3000
 # execute bit or shebang, so a COPY that lands without the execute bit still
 # runs.
 #
-# 'dev' needs documentation mounted over /template/docs to serve anything, since
-# the docs tree is deleted above. entrypoint.sh checks for that before starting
-# and exits with the mount commands to use, instead of letting Docusaurus fail
-# with a stack trace and leaving the container running behind it.
-# scripts/preview-docs.ps1 is what sets those mounts up.
+# 'dev' needs documentation mounted over /template/docs to serve anything: the
+# template's own docs never enter the image (.dockerignore excludes them), so
+# there is nothing there to render. entrypoint.sh checks for that before
+# starting and exits with the mount commands to use, instead of letting
+# Docusaurus fail with a stack trace and leaving the container running behind
+# it. scripts/preview-docs.ps1 is what sets those mounts up.
 ENTRYPOINT ["/bin/sh", "/template/scripts/entrypoint.sh"]
 CMD ["dev"]

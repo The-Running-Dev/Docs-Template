@@ -213,5 +213,20 @@ tsconfig.json
 Dockerfile
 data/
 
-src/pages/*.md
-src/pages/demos/
+# The template's own docs are not shipped to consumers either: a consumer
+# overlays their own docs/ onto /template, and anything left here would be
+# sample content they inherit. Excluded rather than copied and then deleted in
+# the Dockerfile, so it never enters the build context at all.
+docs/
+
+# The template's own pages are not shipped to consumers. Docusaurus compiles
+# everything under src/pages into routes, and those routes come from the image's
+# siteDir rather than the mounted content, so a consumer cannot suppress them:
+# every consumer site was inheriting /, /cv, /portfolio, /projects and
+# /admin/projects, wearing the consumer's own title. index.tsx was the damaging
+# one, since it claimed the site root and left no supported way to replace it.
+#
+# Excluded from the image only. The files stay in the repository, where this
+# template's own site is built from and still serves them, and where the
+# components behind them keep their tests.
+src/pages/

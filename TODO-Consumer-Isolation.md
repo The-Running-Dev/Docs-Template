@@ -1,0 +1,320 @@
+# TODO — Consumer Isolation
+
+Created: 2026-07-27
+
+A consumer site built from `ghcr.io/the-running-dev/docs-template` inherits routes
+from the image's own `src/pages/`, including the site root. This plan closes that,
+and picks up the secondary findings reported alongside it.
+
+## P0 — The image leaks its own pages into every consumer site
+
+**Reproduced**, not taken on report. A scratch consumer with exactly one authored
+Markdown file:
+
+```text
+/                 Welcome | Leak Repro
+/cv               CV/Resume | Leak Repro
+/portfolio        Portfolio | Leak Repro
+/projects         Projects | Leak Repro
+/admin/projects   Admin • Projects | Leak Repro
+/docs             Leak Repro          <- the only route the consumer authored
+```
+
+Five routes the consumer never wrote, wearing the consumer's own `title`. The
+root is the damaging one: with `routeBasePath: 'docs'` the consumer's landing
+page is the template's "Welcome" page, and nothing in their `docs/` can displace
+it.
+
+### Root cause, and a detail the report did not cover
+
+`src/pages/` compiles from the image's `siteDir`, not from the mounted content
+directory, so a consumer cannot suppress it. But **the two build paths disagree**,
+which is why this was not caught earlier:
+
+| Path                                              | Strips `src/pages`? | Result  |
+| ------------------------------------------------- | ------------------- | ------- |
+| `docs/Dockerfile` — consumer local preview        | yes (`rm -rf`)      | no leak |
+| `scripts/docs-build.ps1` — CI, and what publishes | **no**              | leaks   |
+
+A consumer's local preview therefore does not match their published site, and
+**that divergence is currently documented nowhere.** An earlier draft of the
+consumer guide did describe it — the now-deleted `planning/AGENTS-docs-section.md`
+said "what sits at `/` differs by build path", framing it as a quirk rather than
+a defect. It was dropped when that file was condensed into
+`docs/getting-started/installing-the-docs-system.md`, whose "Serving path"
+section covers only `routeBasePath` and homepage link rewriting. So the one
+description of the symptom that existed was lost before anyone recognised it was
+the defect.
+
+`.dockerignore` already excludes `src/pages/*.md` and `src/pages/demos/`, so the
+image ships exactly the seven files the report lists — the exclusion mechanism is
+in place and simply does not cover the rest.
+
+### Decision needed before implementing: what should `/` do?
+
+Removing the pages is not in question. What replaces the root is, and it changes
+behaviour for existing consumer sites either way.
+
+First, two things established by experiment, against an image built with
+`src/pages` excluded:
+
+- **Deleting the pages is mandatory, not one option among several.** Tested
+  against the _current_ image, setting `routeBasePath: '/'` makes the template's
+  `index.tsx` win the root and the README-derived homepage **disappear entirely** —
+  no README content anywhere on the site. A consumer supplying their own
+  `docs/src/pages/index.md` today gets `Duplicate routes found!` and wins only by
+  ordering.
+- Once the pages are gone, all three shapes below build cleanly with zero leaked
+  routes and zero duplicate warnings. The difference is where the README lands.
+
+| Option                                                    | README served at     | URL churn |
+| --------------------------------------------------------- | -------------------- | --------- |
+| **(a)** delete, keep `routeBasePath: 'docs'`              | `/docs/` only        | none      |
+| **(b)** delete, also generate a second README page at `/` | `/` **and** `/docs/` | none      |
+| **(c)** delete, set `routeBasePath: '/'`                  | `/` only             | yes       |
+
+**(b) is the weakest and should not be built.** Verified: it serves
+byte-identical content at two URLs. That means two generated files, two
+`GeneratedFiles` drift checks, and two pages competing in search results. The
+README already becomes a page; generating it twice does not give a consumer a
+homepage they own, it gives them the same homepage twice.
+
+**(c) is the strongest.** The README-derived page simply _is_ the site root — one
+copy, one URL, no redirect machinery and no second generator output. It also
+fixes a defect recorded elsewhere as unresolved: the homepage generator rewrites
+the published site origin to `/`, which only resolves when docs serve from the
+root. Confirmed under (c) a README link to `https://docs.example.com/guide`
+becomes `href="/guide"`; under (a) it still points at a route that does not exist.
+
+Recommendation: **(c) for new installs, (a) for existing ones** — the same code
+path. Delete `src/pages` from the image and default `routeBasePath: '/'` in the
+installed config. Existing consumers are untouched because the installer skips
+files that already exist; their config changes only under `-Overwrite`, which is
+opt-in. That meets the no-churn criterion without freezing new projects into the
+worse shape. The cost is that `/docs/*` and `/*` are then both in the wild, so the
+guide must state which shape a project is on.
+
+### Implemented
+
+`.dockerignore` now excludes `src/pages/` from the image, and
+`scripts/docs-build.ps1` removes any that survive before the overlay, warning
+loudly — the two paths can no longer diverge silently, which is what hid this.
+The exclusion is image-only: the files stay in the repository, this template's
+own site still serves them, and the ~226 files of components, hooks, tests and
+`api/` behind them keep their only caller.
+
+Verified against an image built from these changes:
+
+| Check                                                 | Result                    |
+| ----------------------------------------------------- | ------------------------- |
+| Image ships `src/pages`                               | no                        |
+| Docs-only consumer routes                             | `/docs/` only             |
+| Duplicate-route warnings                              | 0                         |
+| Built-ins still emitted                               | `404.html`, `sitemap.xml` |
+| Consumer supplying `docs/src/pages/index.md` owns `/` | yes, 0 duplicate warnings |
+
+**One consequence the report did not predict, found by building it.** With no
+root page, Docusaurus reports broken links — the theme's own 404 page and the
+docs navbar both link to `/`, which no longer exists:
+
+```text
+- Broken link on source page path = /404.html:  -> linking to /
+- Broken link on source page path = /docs/:     -> linking to /
+```
+
+Consumers ship `onBrokenLinks: 'warn'`, so builds still pass, but anyone who
+raises it to `throw` — which the guide presents as reasonable — fails on links
+they did not write. This makes the root question mandatory rather than
+cosmetic, and it settles it: with `routeBasePath: '/'` the docs root _is_ `/`,
+and the same build reports **zero** broken links.
+
+### `routeBasePath` — implemented
+
+`-RouteBasePath` defaults to `'/'` and is substituted into the installed config.
+An existing config's value is preserved under `-Overwrite` unless the parameter
+is passed explicitly, so a re-run to pick up upstream fixes cannot move a
+project's URLs. Verified in all four directions:
+
+| Case                                              | Result                  |
+| ------------------------------------------------- | ----------------------- |
+| New install, no parameter                         | `'/'`                   |
+| New install, `-RouteBasePath docs`                | `'docs'`                |
+| Existing `'docs'` + `-Overwrite`                  | stays `'docs'`, says so |
+| Existing `'docs'` + `-Overwrite -RouteBasePath /` | moves to `'/'` — opt-in |
+
+End to end on an image built from these changes: a default install builds with
+**0 broken links, 0 duplicate routes**, one route `/`, and the README as its
+content. The consumer guide documents both shapes and the preserve-on-overwrite
+behaviour.
+
+### Superseded proposal (kept for the reasoning)
+
+Now that the pages are gone, the root is no longer a matter of taste. Measured on
+an image built from these changes:
+
+| Installed config        | Broken links reported                     | README served at |
+| ----------------------- | ----------------------------------------- | ---------------- |
+| `routeBasePath: 'docs'` | **2** — `/404.html` → `/`, `/docs/` → `/` | `/docs/`         |
+| `routeBasePath: '/'`    | **0**                                     | `/`              |
+
+The two broken links are generated by the theme, not by the consumer: the 404
+page and the docs navbar both link to `/`. Consumers ship `onBrokenLinks: 'warn'`
+so builds pass, but the guide presents raising it to `'throw'` as reasonable, and
+that turns links the consumer never wrote into a failed build. `routeBasePath: '/'`
+makes `/` exist, so both resolve.
+
+It also repairs the homepage generator, which rewrites the published site origin
+to `/`. That only lands on the generated homepage when documentation is served
+from the root; under `'docs'` those links point at a route that does not exist.
+
+**Proposed shape.**
+
+1. Add `-RouteBasePath` to `setup-docs.ps1`, defaulting to `'/'`, substituted into
+   the installed `docusaurus.config.ts` the same way `-Title` and `-SiteUrl` are.
+   New projects get the coherent shape and can still choose `'docs'` explicitly.
+2. **Preserve the existing value under `-Overwrite`.** Without this the default
+   alone is unsafe: an existing consumer re-running with `-Overwrite` to pick up
+   an upstream fix would have their config replaced and every URL moved, silently.
+   The installer should read the current value, keep it, and say so — changing it
+   only when `-RouteBasePath` is passed explicitly.
+3. Document both shapes in the consumer guide, including that a project on
+   `'docs'` has the origin-rewrite caveat and a project on `'/'` does not.
+
+That satisfies the no-churn criterion by construction rather than by convention:
+an existing consumer's URLs cannot move unless they ask.
+
+**Deliberately not proposed.** Rewriting existing consumers to `'/'`, even with
+redirects — the acceptance criteria forbid URL churn, and a redirect plugin is a
+dependency they did not choose.
+
+**Follow-up this exposes.** The generator hardcodes `/` as the rewrite target
+rather than deriving it from `routeBasePath`, so a project that stays on `'docs'`
+keeps a subtly wrong homepage. Worth fixing separately; it needs the generator to
+learn the route base, which today lives only in `docusaurus.config.ts`.
+
+### Remaining tasks
+
+- [x] Exclude `src/pages/` from the image via `.dockerignore`.
+- [x] `scripts/docs-build.ps1` strips and warns about any `src/pages` the image
+      still carries, checked before the overlay so a consumer's own pages are not
+      mistaken for the leak.
+- [x] Reconcile `docs/Dockerfile`: once the image ships no pages, the line that
+      removes `src/pages` there is dead. Remove it, or keep it as
+      belt-and-braces with a comment saying which layer is authoritative.
+- [x] Implement the chosen root behaviour and document how a consumer owns `/`.
+- [x] Extend the "Serving path" section of the consumer guide. It does not
+      currently mention leaked pages or the preview/CI divergence at all, so this
+      is new content rather than a correction, and it should describe the fixed
+      behaviour once P0 lands.
+
+Acceptance criteria (from the report, plus one):
+
+- [x] A docs-only consumer build emits no route the consumer did not author,
+      other than Docusaurus built-ins (`404.html`, `sitemap.xml`, `assets/`).
+- [x] `find <out> -name index.html` yields only `/docs/*` and, at most, a root
+      that is empty-by-design or a redirect.
+- [x] A consumer can define `/` without shadowing an image file.
+- [x] Existing `/docs/*` routes are unchanged — no URL churn.
+- [x] **Local preview and the CI build produce the same route set.** Verify both,
+      not just CI; their disagreement is what hid this.
+
+## P1 — `Invoke-DocsBuild` fails under `--user`
+
+Not in the report. Found while reproducing it.
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest \
+  Invoke-DocsBuild -SourceDocs /work/docs -OutputPath /work/artifacts/docs
+```
+
+```text
+Access to the path '/template/Dockerfile' is denied.
+```
+
+`docs-build.ps1` overlays the consumer's `docs/` onto `/template`, which is
+root-owned, so a non-root `--user` cannot write there. The report's reproduce
+command omits `--user` and therefore works.
+
+This matters because **the published consumer guide tells readers to use exactly
+that command, with `--user`**, under "To reproduce what CI builds, without
+pushing". The instruction fails for everyone who follows it. `--user` is correct
+for `Invoke-SetupDocs`, which writes into the mount, and wrong for
+`Invoke-DocsBuild`, which writes into the image.
+
+- [x] Fix the guide: drop `--user` from the `Invoke-DocsBuild` example and say why
+      the two commands differ.
+- [ ] Consider having `docs-build.ps1` stage into a writable directory instead of
+      `/template`, so `--user` works uniformly. Larger change; the doc fix is the
+      immediate one.
+
+## P2 — Secondary findings from the report — all fixed
+
+Each verified rather than assumed; details under the individual entries.
+
+| Finding                              | Fix                                                                |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| Anchor slugs disagreed with GitHub   | one hyphen per space, not per run of whitespace                    |
+| Gate not runnable from the image     | exposed as `Invoke-DocsTest`; root now resolves from the mount too |
+| Generator awkward to invoke directly | `-ReadmePath` optional, `-OutputPath` added                        |
+| Stale `sidebar.ts` comment           | rewritten in consumer terms                                        |
+
+Plus the follow-up the P0 work exposed: the generator no longer hardcodes `/` as
+its rewrite target, taking `-RouteBasePath` instead, wired through the installer
+and the rules file so the gate's drift check regenerates identically. Verified
+for both shapes — the gate passes on a `/` project and a `/docs` project, which
+it could not if the three disagreed.
+
+### 1. Gate anchor slugs disagree with GitHub
+
+`build/Test-Documentation.ps1` derives `#phase-1-correctness-fixes` where GitHub
+derives `#phase-1--correctness-fixes` for `## Phase 1 — Correctness fixes`. The
+same file cannot satisfy both, and both are read.
+
+- [x] Match GitHub's algorithm: strip the em dash, keep the separator either side,
+      collapsing nothing.
+- [ ] Add a regression test with an em dash heading, and one with an en dash.
+      **Not done.** This repository has no PowerShell test harness, so the fix
+      was verified by running the slug function directly rather than by a
+      committed test. Adding one is a change of its own.
+- [x] Matching was not rejected, so there is no divergence left to document.
+
+### 2. `Test-Documentation.ps1` is documented as runnable but is not exposed
+
+The guide says `./build/Test-Documentation.ps1`; the dispatcher rejects it, since
+only `Invoke-DocsBuild`, `Invoke-SetupDocs` and `Invoke-SetupDocsWorkflow` are
+exposed. It works only with host `pwsh`, or via `--entrypoint pwsh`.
+
+- [x] Expose it as `Invoke-DocsTest` in `PSModule/PSModule.psd1` and regenerate,
+      so the documented command works from the image.
+- [x] Note that the gate needs the consumer's `build/` and `.config/` at their
+      installed paths, so the container invocation needs the mount — verify before
+      documenting it.
+
+### 3. `ConvertTo-DocumentationHomepage.ps1` is awkward to invoke directly
+
+`-ReadmePath` is mandatory and undocumented, and output goes to stdout rather than
+to a file, so the obvious invocation appears to do nothing.
+
+- [x] Default `-ReadmePath` to `<ProjectDir>/README.md`.
+- [x] Add `-OutputPath` that writes in place, keeping stdout as the default so
+      existing callers — `setup-docs.ps1` and the gate — are unaffected.
+
+### 4. Generated `sidebar.ts` carries a stale comment
+
+Every consumer repo receives a comment referring to `engine/` and `games/`, folders
+from the project this template was extracted from.
+
+- [x] Rewrite the comment in `scripts/template/sidebar.ts` in consumer terms.
+
+## Confirmed working — do not regress
+
+Verified in this investigation and worth protecting:
+
+- `Invoke-SetupDocs` is non-destructive to existing content: 11 files created,
+  only the `docs.yml` it replaces removed, every content file untouched.
+- The "generator rewrites the site origin but not relative links" caveat is
+  accurate, and the gate reports the resulting breakage precisely.
+- `docs/static/CNAME` reaches the build output, so custom domains survive.
+- The `docs-ci.yml` / `docs-deploy.yml` split keeps `pages`/`id-token` off the
+  gate and build jobs.
