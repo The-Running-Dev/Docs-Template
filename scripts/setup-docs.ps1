@@ -59,6 +59,13 @@
     Where the gate rules are installed, relative to the project. Defaults to
     '.config'.
 
+.PARAMETER BaseImage
+    Documentation image the installed files build on. Written to all four
+    places an install references it -- docs/Dockerfile's BASE_IMAGE argument,
+    docs.ps1's default, and the container image in both workflows -- so a
+    project pinning a date tag or using a fork or private mirror does not have
+    to hand-edit each one. Defaults to the published image at :latest.
+
 .PARAMETER NoHomepage
     Do not generate the homepage from the README, and do not register it for
     drift checking. Use when the homepage is authored by hand.
@@ -90,6 +97,7 @@ param(
     [Parameter()][string]$SiteUrl = '',
     [Parameter()][string]$ScriptDir = 'build',
     [Parameter()][string]$ConfigDir = '.config',
+    [Parameter()][string]$BaseImage = 'ghcr.io/the-running-dev/docs-template:latest',
     [Parameter()][switch]$NoHomepage,
     [Parameter()][switch]$SkipWorkflow,
     [Parameter()][switch]$SkipGate,
@@ -414,6 +422,19 @@ function Resolve-ContainedProjectDirectory {
     return $resolved
 }
 
+# -BaseImage is interpolated into a Dockerfile ARG, a PowerShell string, and
+# two YAML scalars. A container reference cannot legally contain whitespace or
+# quotes, and any of those would corrupt one of the four files rather than fail
+# visibly, so reject them here instead of installing something subtly broken.
+if ($BaseImage -match '[\s''"]') {
+    throw "-BaseImage must be a container reference with no whitespace or quotes: '$BaseImage'."
+}
+if ([string]::IsNullOrWhiteSpace($BaseImage)) {
+    throw '-BaseImage must not be empty.'
+}
+
+$defaultBaseImage = 'ghcr.io/the-running-dev/docs-template:latest'
+
 $projectPath = Resolve-ProjectPath -Path $ProjectDir
 $docsDir = Join-Path $projectPath 'docs'
 $contentDir = Join-Path $docsDir 'docs'
@@ -475,7 +496,10 @@ Copy-TemplateFile -Name 'sidebar.ts' `
 
 Copy-TemplateFile -Name 'Dockerfile' `
     -Destination (Join-Path $docsDir 'Dockerfile') `
-    -Relative 'docs/Dockerfile'
+    -Relative 'docs/Dockerfile' `
+    -Replace @{
+        "ARG BASE_IMAGE=$defaultBaseImage" = "ARG BASE_IMAGE=$BaseImage"
+    }
 
 # Stored without the leading dot so it is not hidden, and not applied to this
 # template's own build context.
@@ -490,6 +514,7 @@ Copy-TemplateFile -Name 'docs.ps1' `
         "Join-Path `$root 'build' 'ConvertTo-DocumentationHomepage.ps1'" = "Join-Path `$root '$ScriptDir' 'ConvertTo-DocumentationHomepage.ps1'"
         "Join-Path `$root '.config' 'DocumentationRules.psd1'" = "Join-Path `$root '$ConfigDir' 'DocumentationRules.psd1'"
         "[string]`$Tag = 'project-docs'" = "[string]`$Tag = '$(ConvertTo-DockerTagSegment -Value $Title)-docs'"
+        "[string]`$BaseImage = '$defaultBaseImage'" = "[string]`$BaseImage = '$BaseImage'"
     }
 
 # --- Homepage ---------------------------------------------------------------
@@ -575,6 +600,7 @@ if (-not $SkipWorkflow) {
     # requires -SkipWorkflow and hand-adjusting the installed workflow, same as
     # today; this is not a new limitation, only carried over from the file split.
     $docsCiContent = Get-Content -LiteralPath (Join-Path $templateDir 'docs-ci.yml') -Raw
+    $docsCiContent = $docsCiContent.Replace("image: $defaultBaseImage", "image: $BaseImage")
 
     if ($SkipGate) {
         $docsCiContent = Remove-MarkedBlock -Content $docsCiContent `
@@ -589,7 +615,10 @@ if (-not $SkipWorkflow) {
 
     Copy-TemplateFile -Name 'docs-deploy.yml' `
         -Destination (Join-Path $workflowDir 'docs-deploy.yml') `
-        -Relative '.github/workflows/docs-deploy.yml'
+        -Relative '.github/workflows/docs-deploy.yml' `
+        -Replace @{
+            "image: $defaultBaseImage" = "image: $BaseImage"
+        }
 
     # Runs unconditionally, not only under -Overwrite: the retired files break
     # the two installed above whether or not those were themselves replaced,

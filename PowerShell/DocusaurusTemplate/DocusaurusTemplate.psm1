@@ -56,6 +56,7 @@ function Invoke-SetupDocs {
         [Parameter()][string]$SiteUrl = '',
         [Parameter()][string]$ScriptDir = 'build',
         [Parameter()][string]$ConfigDir = '.config',
+        [Parameter()][string]$BaseImage = 'ghcr.io/the-running-dev/docs-template:latest',
         [Parameter()][switch]$NoHomepage,
         [Parameter()][switch]$SkipWorkflow,
         [Parameter()][switch]$SkipGate,
