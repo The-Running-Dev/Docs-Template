@@ -1,124 +1,138 @@
 # Next
 
-Follow-up work after the v1 rename. Independent of that branch, which is already
-large.
+Open work for this repository, carried out of the documentation-system
+convergence and the consumer-isolation fix. Nothing here is blocking; each item
+says what it costs to leave alone.
 
-## 1. Publishing Stays Release-Driven
+> **This file previously described `SubZeroDev.PSGenerator`**, not this
+> repository — nuget.org publishing, Pester matrices, that project's pull
+> requests #61 and #62. Its one section about this repository, converging the
+> docs workflows onto a single shape, shipped in #42. The PSGenerator content is
+> preserved in git history at `c868bc6:TODO-Next.md` if it should be moved to
+> that repository rather than lost.
 
-Decided: keep publishing on tag push and manual dispatch until 1.0 is
-formalized. No change to `publish.yml`. The container image keeps publishing
-from `main` on its own cadence as `:latest`.
+## 1. `Invoke-DocsBuild` cannot run under `--user`
 
-Revisit at 1.0, and note two things that will matter then:
+```text
+Access to the path '/template/Dockerfile' is denied.
+```
 
-- **nuget.org and GitHub Packages both reject a version that already exists,
-  permanently.** Any "publish on push" scheme has to publish only when
-  `ModuleVersion` changes, or it fails on the second push.
-- **The first nuget.org push claims `SubZeroDev.PSGenerator` forever.** It can be
-  deprecated but never renamed, so confirm the public name before publishing.
+`docs-build.ps1` overlays the consumer's `docs/` onto `/template`, which the
+image owns as root, so a non-root `--user` cannot write there. `Invoke-SetupDocs`
+is unaffected — it writes into the mount.
 
-Also worth deciding then: whether the image should carry `:1.0.0` alongside
-`:latest`, so an image can be matched to a package version. The image now
-publishes `:latest` only.
+The consumer guide documents the asymmetry, so nobody is blocked, but two
+commands needing opposite invocations is a papercut that will keep being
+rediscovered.
 
-## 2. Gaps Found During the Rename
+- [ ] Stage the overlay into a writable directory instead of building in
+      `/template`, so `--user` behaves the same for every command.
 
-Small, concrete, and each one is a thing that can silently rot.
+Cost of leaving it: the guide has to keep explaining why one command takes
+`--user` and the other must not.
 
-- **No status check is required on `main`.** The `Main` ruleset now protects the
-  branch — a pull request is required, force pushes and deletion are blocked,
-  admins are included, review threads must be resolved, and merges are squash or
-  rebase only. What it does not have is a `required_status_checks` rule, and
-  neither does classic protection, so a red PowerShell quality, documentation,
-  Pester, or docs run still does not block a merge. The deploy-path coverage
-  added in #61 exists specifically to fail before merge rather than after;
-  without required checks it only reports.
+## 2. No PowerShell test harness
 
-  Add these ten contexts, exactly as CI reports them. A context that does not
-  match a reported check name never becomes required, and fails silently rather
-  than loudly:
+The anchor-slug fix in #44 was verified by running the function directly,
+because there is nowhere to put a test. The scripts under `scripts/` and
+`scripts/template/` have no coverage at all, while the TypeScript side has
+Vitest.
 
-  ```text
-  Build and publish image
-  Container end-to-end
-  Documentation links and terminology
-  Pester (ubuntu-latest)
-  Pester (windows-latest)
-  PowerShell 7.4 baseline (ubuntu-latest)
-  PowerShell 7.4 baseline (windows-latest)
-  PowerShell NuGet package
-  PowerShell quality
-  Verify documentation / Verify Documentation Build
-  ```
+- [ ] Add Pester, and a first test for `ConvertTo-HeadingSlug` covering an em
+      dash and an en dash — the case that made GitHub and the gate disagree.
+- [ ] Decide whether it runs in `test-and-coverage.yml` or its own job.
 
-  Only the reusable documentation workflow carries a `caller / job` prefix; the
-  rest report their job name alone.
+Cost of leaving it: every future change to the gate, the installer, or the
+generator is verified by hand, exactly as the ones in #42 and #44 were.
 
-  Do not require `Deploy documentation`: it is skipped on pull requests by
-  design, because its job is gated on `github.event_name == 'push'`.
-- **Head branches are not deleted on merge.** Nine stale branches accumulated
-  before being cleaned up, all of them pointers into already-merged history. The
-  two most recent behaved differently — `#62`'s branch went automatically while
-  `feature/replace-docs-workflow` stayed — so the setting is not on for every
-  merge path. Turn on *Automatically delete head branches* in repository
-  settings and the list stops growing on its own.
-- **A generated command can shadow an existing one.** Since the inference naming
-  fix, `convertto-json.ps1` produces `ConvertTo-Json`, which shadows the built-in
-  once the module is imported. Documented as a note in the script inference
-  guide, but inference could detect the collision and warn, the same way it warns
-  about source commands without runtime mappings.
-- **`.gitignore` does not cover `bin/` and `obj/`.** The BuildAgent fixture's
-  `.csproj` files produce build output that shows up as untracked noise whenever
-  anything builds them. Those directories are currently empty, so it is quiet
-  right now, and it will come back.
+## 3. Compliance rule 1275448 conflicts with GitVersion tagging
 
-## 3. Still Open on the v1 Roadmap
+The rule requires version strings, including Docker tags, to match
+`YYYY.MM.DD`. Since #42 the image publishes `:latest` plus an immutable
+`:1.0.0-<sha>` computed by GitVersion, which the rule flags on every pull
+request.
 
-Not re-planned here, just so it is not forgotten. `TODO.md` still has:
+This is a deliberate divergence, not a defect: the date tag was removed on
+purpose, and a GitVersion tag carries the commit so it is genuinely immutable,
+which a moving date tag is not.
 
-- **§3 Docker-BuildAgent compatibility** — 11 of 13 items unchecked, and this is
-  the largest remaining piece of engineering. Includes the maintenance-script
-  classification that would keep repo tooling out of a public command surface.
-- **§4 Inspector hardening** — all 6 unchecked, starting with the warn-versus-fail
-  malformed-input policy.
-- **§5** — device and GPU mappings on runners that expose the hardware.
-- **Three documentation-toolchain follow-ups** — the `docs-build.ps1` prune
-  manifest, whether `docs/Dockerfile` and `.dockerignore` should stay, and
-  whether the `docs.yml` caller is still worth having. All upstream-shaped and
-  lower priority since the 404 fix removed the reason the prune manifest existed.
+- [ ] Amend or scope the rule so it stops flagging intended behaviour.
 
-## 4. Converge the Docs Workflows on the Portable Shape
+Cost of leaving it: a permanent false positive on every pull request, which
+trains readers to skim compliance findings.
 
-`planning/Install-DocsSystem.ps1` installs a single `docs-ci.yml` into other
-projects, carrying three jobs: the gate, the site build, and deploy. This
-repository still uses the older split — `docs.yml` calling `docs-ci.yml` and
-`docs-deploy.yml`, with the gate living as the `documentation` job inside
-`test.yml`.
+## 4. `-BaseUrl` is not an installer parameter
 
-Both arrangements work, and nothing is broken. But the reference and the thing it
-is meant to reproduce should not drift apart, and four files doing what one file
-does is harder to explain than it is worth.
+`-SiteUrl` sets Docusaurus `url` only. `baseUrl` keeps the template's `/`, which
+is wrong for a GitHub Pages **project** site at
+`https://<owner>.github.io/<repo>/` — every asset 404s until it is hand-edited
+to `/<repo>/`.
 
-- Collapse `docs.yml`, `docs-ci.yml`, `docs-deploy.yml`, and the `documentation`
-  job in `test.yml` into one `docs-ci.yml` matching the installed shape.
-- The gate keeps the check name **Documentation links and terminology**, so that
-  required check keeps matching. **`Verify documentation` and `Deploy
-  documentation` do not** — they become `Verify Documentation Build` and `Build
-  and Deploy Documentation`. Update branch protection in the same pull request,
-  or the new names are simply not required and a red run stops blocking.
-- Invoke the gate with `-TreatWarningsAsErrors` to preserve today's behaviour,
-  where any finding fails the build.
+The guide says so plainly, so it is a known manual step rather than a trap.
 
-Separate pull request. Worth doing once the docs image carries the payload and
-the installer has been used against a real project at least once, so this repo
-converges on something already proven rather than on a guess.
+- [ ] Add `-BaseUrl`, substituted the same way `-SiteUrl` and `-RouteBasePath`
+      are, so a project site installs correctly in one command.
 
-## Sequencing
+Cost of leaving it: every project-site consumer edits a file immediately after
+installing.
 
-Dropping Docusaurus versioning is done, so the snapshot no longer has to be
-re-cut on every documentation change.
+## 5. `ContainerImage` in the module specification is not an image reference
 
-Of what remains, the two repository settings in section 2 are the highest
-leverage and cost nothing: without required status checks, none of the gates
-block a merge. After that, the `index.md` drift check, since it closes a gap
-that currently depends on someone remembering. Publishing waits for 1.0.
+`PSModule/PSModule.psd1` carries `ContainerImage = 'DocsTemplate'`. It was
+renamed alongside `ModuleName` and was never a real reference — the published
+image is `ghcr.io/the-running-dev/docs-template`. Nothing reads it today,
+because every generated command invokes its script directly rather than through
+Docker.
+
+- [ ] Set it to the real image reference before adding any container-kind
+      command, or the first one will inherit a meaningless value.
+
+Cost of leaving it: none today; a confusing failure the day a container command
+is added.
+
+## 6. The generator fallback is a workaround at the wrong layer
+
+`build-psmodule.ps1` cannot assume `SubZeroDev.PSGenerator` is installed, so it
+falls back to copying the module out of the published generator image with
+`docker create` and `docker cp`. That works, and every release since #42 has
+gone through it, but the build agent is where the generator belongs — the
+fallback exists only because it is not there yet.
+
+- [ ] Delete the fallback once the build agent ships `SubZeroDev.PSGenerator`.
+      The installed-module branch above it then takes over unchanged.
+
+Cost of leaving it: every CI run pulls an image to obtain a PowerShell module,
+and this repository carries container plumbing that is not really its concern.
+
+## 7. Planning documents are accumulating
+
+Five now sit at the repository root:
+
+| File                         | What it is                                      |
+| ---------------------------- | ----------------------------------------------- |
+| `TODO.md`                    | Standing backlog — test health, coverage policy |
+| `TODO-Next.md`               | This file: open follow-ups                      |
+| `TODO-Docs-Convergence.md`   | Record of #42, complete but for §6 below        |
+| `TODO-Consumer-Isolation.md` | Record of #44, complete but for items 1 and 2   |
+| `DOCS-BUILD-PLAN.md`         | Record of the container build split, complete   |
+
+Three are finished-work records kept for their reasoning, which is worth having
+— several findings in #44 were only diagnosable because #42's record said what
+had already been tried. But the repository root is not where a reader looks for
+them.
+
+- [ ] Decide whether completed records move under `docs/` (published, and
+      covered by the gate) or into an `archive/` directory, and whether
+      `TODO.md` and this file stay at the root as the two live ones.
+
+Cost of leaving it: a reader cannot tell which of the five describe work still
+to do.
+
+## Not tracked here
+
+- **`archive/feature-more_http_provider_support`** — 29 commits, last touched
+  2025-09-03, 295 files diverged, and its substance already reached `main` by
+  another route. Do not merge it. If the branch list should be tidy, tag it
+  first so the commits stay reachable, then delete the branch.
+- **`SubZeroDev.WinGet` review findings** — the `PackageTest` environment
+  assumption and the three non-blocking observations belong to that repository.

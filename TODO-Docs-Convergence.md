@@ -416,10 +416,13 @@ the wrong call: the image knows it has no documentation, so it can say so.
 `ScriptDir`, `ConfigDir`, `NoHomepage`, and `SkipGate` are unreachable through
 the module.
 
-- [ ] Regenerate `PSModule/PSModule.psd1` so all ten parameters are exposed.
-- [ ] Confirm its container invocation mappings match the Phase 2 entrypoint.
-- [ ] Drop the `Invoke-SetupDocsWorkflow` entry for the script Phase 1 deletes.
-- [ ] Land the currently-uncommitted working-tree regeneration of
+- [x] Regenerate `PSModule/PSModule.psd1`. It now declares fourteen parameters, not
+      the ten this item assumed, and a build-time check keeps it matching the
+      script.
+- [x] Confirm its container invocation mappings match the Phase 2 entrypoint.
+- [x] ~~Drop the `Invoke-SetupDocsWorkflow` entry~~ — **obsolete.** The script
+      was restored as a thin wrapper, so the entry is correct and stays.
+- [x] Land the currently-uncommitted working-tree regeneration of
       `PSModule.psd1` here, as a deliberate change rather than incidental noise.
 
 Acceptance criteria:
@@ -431,15 +434,17 @@ Acceptance criteria:
 
 Against a real consumer repository, not a scratch directory.
 
-- [ ] Install via `docker run` into a real project.
-- [ ] Author a page, run the gate, build the site.
-- [ ] Confirm the Pages archive step succeeds (`tar --hard-dereference` needs
+- [x] Install via `docker run` into a real project.
+- [x] Author a page, run the gate, build the site.
+- [x] Confirm the Pages archive step succeeds (`tar --hard-dereference` needs
       GNU tar, which is why it is installed explicitly in the `Dockerfile`).
-- [ ] Correct `planning/AGENTS-docs-section.md` against observed behavior and
+- [x] Correct `planning/AGENTS-docs-section.md` against observed behavior and
       promote it out of `planning/`.
-- [ ] Fix the stale `setup-docs.ps1` reference inside
+- [x] ~~Fix the stale `setup-docs.ps1` reference~~ — **obsolete.** It assumed a
+      rename that never happened; the installer is still `setup-docs.ps1`, so the
+      reference is accurate. Was inside
       `scripts/template/DocumentationRules.psd1`.
-- [ ] Re-check every `AGENTS.md` usage instruction from Phase 2 against what
+- [x] Re-check every `AGENTS.md` usage instruction from Phase 2 against what
       actually happened, and correct anything that drifted.
 
 Acceptance criteria:
@@ -449,14 +454,14 @@ Acceptance criteria:
 
 ## P5 — Retire the planning branch
 
-- [ ] Delete `planning/Install-DocsSystem.ps1` (superseded).
-- [ ] Delete `planning/docs.ps1` (a consumer's copy, still tagged
+- [x] Delete `planning/Install-DocsSystem.ps1` (superseded).
+- [x] Delete `planning/docs.ps1` (a consumer's copy, still tagged
       `gameoflife-docs`).
 - [x] Delete `planning/AGENTS-docs-section.md.orig` and
       `planning/Install-DocsSystem.ps1.orig` (editor backups).
 - [x] Remove `planning/llms-powershell-module-discovery.md` — it targets
       `The-Running-Dev/LLMs` and `SubZeroDev.PSGenerator`, not this repository.
-- [ ] Split `TODO-Next.md`: §4 describes this repository; the rest (Pester,
+- [x] Split `TODO-Next.md`: §4 describes this repository; the rest (Pester,
       `SubZeroDev.PSGenerator` naming, pull requests #61/#62) belongs to
       PSGenerator. Move rather than delete.
 

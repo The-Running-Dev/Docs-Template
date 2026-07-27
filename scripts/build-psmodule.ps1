@@ -266,6 +266,58 @@ try {
     Test-PSModuleSpecification -Specification $specificationPath -ErrorAction Stop | Out-Null
     Write-Host '[PSMODULE] Specification is valid.' -ForegroundColor Green
 
+    # Test-PSModuleSpecification checks the specification's own shape, not
+    # whether it still matches the scripts it describes. The specification is
+    # hand-maintained, so adding a parameter to a script does not reach it: that
+    # is how -RouteBasePath shipped absent from Invoke-SetupDocs while present
+    # on setup-docs.ps1, leaving the documented container command unable to
+    # accept the flag its own help described.
+    #
+    # Compared by name only. Types and descriptions are editorial; a parameter
+    # existing at all is what decides whether a documented invocation works.
+    # Not $specification: PowerShell variable names are case-insensitive, so
+    # that is the [string]$Specification parameter, and assigning a hashtable to
+    # it coerces the value to 'System.Collections.Hashtable' rather than failing
+    # -- the property access below then errors on a string.
+    $specData = Import-PowerShellDataFile -LiteralPath $specificationPath
+    $drift = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($command in $specData.Commands) {
+        if ($command.SourceKind -ne 'Script') { continue }
+
+        $scriptPath = Join-Path $repositoryRoot $command.SourcePath
+        if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+            $drift.Add("$($command.Name): source '$($command.SourcePath)' does not exist.")
+            continue
+        }
+
+        $declared = @($command.Parameters | ForEach-Object { $_.Name })
+        $actual = @((Get-Command $scriptPath).Parameters.Values |
+            Where-Object { $_.Name -notin [System.Management.Automation.PSCmdlet]::CommonParameters } |
+            ForEach-Object { $_.Name })
+
+        # -WhatIf and -Confirm come from SupportsShouldProcess rather than the
+        # param block, and the generator supplies its own, so they are not drift.
+        $actual = @($actual | Where-Object { $_ -notin @('WhatIf', 'Confirm') })
+
+        foreach ($missing in @($actual | Where-Object { $_ -notin $declared })) {
+            $drift.Add("$($command.Name): '$missing' exists on $($command.SourcePath) but not in the specification.")
+        }
+        foreach ($extra in @($declared | Where-Object { $_ -notin $actual })) {
+            $drift.Add("$($command.Name): '$extra' is in the specification but not on $($command.SourcePath).")
+        }
+    }
+
+    if ($drift.Count -gt 0) {
+        throw (
+            "The specification has drifted from the scripts it describes:`n  " +
+            ($drift -join "`n  ") +
+            "`nUpdate PSModule/PSModule.psd1 so every documented command accepts what its script does."
+        )
+    }
+
+    Write-Host '[PSMODULE] Specification matches its scripts.' -ForegroundColor Green
+
     Build-PSModule -Specification $specificationPath -Output $outputPath -ErrorAction Stop | Out-Null
 }
 finally {
