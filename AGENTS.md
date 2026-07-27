@@ -109,7 +109,8 @@ docker run --rm \
   watcher that outlives it. `scripts/preview-docs.ps1` (or the `docs.ps1`
   installed into a consumer project) sets those mounts up for you and supports
   `-Live` for hot reload.
-- **`docker run <image> pwsh`** (or `sh` / `bash`) drops into a shell directly,
+- **`docker run <image> pwsh`** (or `sh` — not `bash`, which this Alpine-based
+  image does not ship) drops into a shell directly,
   same as before an entrypoint existed. Any other first word is looked up as an
   exported `DocsTemplate` module command; an unrecognized name fails
   immediately with the list of what the image actually exposes, rather than a

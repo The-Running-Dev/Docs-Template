@@ -371,13 +371,51 @@ function Remove-MarkedBlock {
     )
 
     $lines = @($Content -split "`r?`n")
-    $startLine = [Array]::IndexOf($lines, $StartMarker)
-    $endLine = [Array]::IndexOf($lines, $EndMarker)
 
-    if ($startLine -lt 0 -or $endLine -lt 0) {
+    # Each marker is located and validated in turn rather than by two bare
+    # IndexOf calls. Finding both and trusting them is not enough: with the end
+    # marker above the start marker the slice arithmetic below silently
+    # duplicates the lines between them and leaves both markers in place,
+    # producing malformed output and no error -- confirmed by reproduction.
+    # A template that has been edited into that state should fail loudly, since
+    # the alternative is installing a corrupted file into someone's project.
+    $startLine = [Array]::IndexOf($lines, $StartMarker)
+    if ($startLine -lt 0) {
         throw (
-            "$FileLabel template is missing the expected markers " +
-            "('$($StartMarker.Trim())' / '$($EndMarker.Trim())'); cannot strip the block."
+            "$FileLabel template is missing the start marker " +
+            "('$($StartMarker.Trim())'); cannot strip the block."
+        )
+    }
+
+    if ([Array]::IndexOf($lines, $StartMarker, $startLine + 1) -ge 0) {
+        throw (
+            "$FileLabel template has more than one start marker " +
+            "('$($StartMarker.Trim())'); which block to strip is ambiguous."
+        )
+    }
+
+    # Searched from after the start marker, so an end marker that only appears
+    # above it reads as missing rather than as a valid pairing.
+    $endLine = [Array]::IndexOf($lines, $EndMarker, $startLine + 1)
+    if ($endLine -lt 0) {
+        $strayEnd = [Array]::IndexOf($lines, $EndMarker)
+        if ($strayEnd -ge 0) {
+            throw (
+                "$FileLabel template has its end marker ('$($EndMarker.Trim())') " +
+                "on line $($strayEnd + 1), above the start marker on line " +
+                "$($startLine + 1); the block is malformed."
+            )
+        }
+        throw (
+            "$FileLabel template is missing the end marker " +
+            "('$($EndMarker.Trim())'); cannot strip the block."
+        )
+    }
+
+    if ([Array]::IndexOf($lines, $EndMarker, $endLine + 1) -ge 0) {
+        throw (
+            "$FileLabel template has more than one end marker " +
+            "('$($EndMarker.Trim())'); which block to strip is ambiguous."
         )
     }
 

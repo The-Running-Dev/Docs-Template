@@ -200,6 +200,21 @@ and `PSModule/PSModule.psd1` is a _generator input_ for
 `RootModule`, no `FunctionsToExport`. It cannot be imported. Both were built,
 separately, as planned.
 
+> **Superseded — read this before the checklist below.** Two things recorded
+> here as done were later replaced, so the details no longer describe the tree:
+>
+> - The hand-authored `PowerShell/DocusaurusTemplate/` module is **gone**. The
+>   module is now generated from `PSModule/PSModule.psd1` by
+>   SubZeroDev.PSGenerator, named `DocsTemplate`, and embedded at `/PSModule`.
+>   `scripts/build-psmodule.ps1` builds it.
+> - `ENV PSModulePath="/template/PowerShell..."` is **gone** with it. The
+>   Dockerfile sets `ENV DOCS_TEMPLATE_MODULE="/PSModule/DocsTemplate.psd1"`
+>   instead, because PowerShell only auto-loads a module whose directory name
+>   matches its manifest and `/PSModule` does not, so the path is passed
+>   explicitly rather than searched for.
+>
+> The checklist is kept as the record of what was done at the time.
+
 - [x] Added `scripts/entrypoint.sh`: no arguments (or `dev`) execs the dev
       server, preserving today's `CMD` contract; `pwsh`/`sh`/`bash` exec
       directly; anything else is dispatched as a command name via
@@ -334,7 +349,9 @@ the wrong call: the image knows it has no documentation, so it can say so.
 - [x] `Test-ModuleManifest` and the PowerShell AST parser both accept every
       new `.ps1`/`.psd1`/`.psm1` file with zero errors.
 - [x] Full `docker build` run against the modified `Dockerfile` — caught two
-      real issues the bind-mount tests couldn't, both fixed: 1. `ENV PSModulePath="/template/PowerShell:${PSModulePath}"` referenced
+      real issues the bind-mount tests couldn't, both fixed (the first
+      concerned a `PSModulePath` line the Dockerfile no longer has at all —
+      see the superseded note above): 1. `ENV PSModulePath="/template/PowerShell:${PSModulePath}"` referenced
       a Dockerfile build-arg that was never defined (Docker's `${VAR}`
       substitution only sees prior `ARG`/`ENV` values, not pwsh's own
       runtime environment), flagged by the builder's own linter and
