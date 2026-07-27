@@ -248,9 +248,22 @@ for `Invoke-SetupDocs`, which writes into the mount, and wrong for
       `/template`, so `--user` works uniformly. Larger change; the doc fix is the
       immediate one.
 
-## P2 — Secondary findings from the report
+## P2 — Secondary findings from the report — all fixed
 
-Ordered as reported. All lower priority than P0.
+Each verified rather than assumed; details under the individual entries.
+
+| Finding                              | Fix                                                                |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| Anchor slugs disagreed with GitHub   | one hyphen per space, not per run of whitespace                    |
+| Gate not runnable from the image     | exposed as `Invoke-DocsTest`; root now resolves from the mount too |
+| Generator awkward to invoke directly | `-ReadmePath` optional, `-OutputPath` added                        |
+| Stale `sidebar.ts` comment           | rewritten in consumer terms                                        |
+
+Plus the follow-up the P0 work exposed: the generator no longer hardcodes `/` as
+its rewrite target, taking `-RouteBasePath` instead, wired through the installer
+and the rules file so the gate's drift check regenerates identically. Verified
+for both shapes — the gate passes on a `/` project and a `/docs` project, which
+it could not if the three disagreed.
 
 ### 1. Gate anchor slugs disagree with GitHub
 

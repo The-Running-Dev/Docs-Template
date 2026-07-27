@@ -38,6 +38,7 @@ Other commands the image exposes:
 | `Invoke-SetupDocs`         | Install or update the whole system.                      |
 | `Invoke-SetupDocsWorkflow` | Install only the two workflows, leaving everything else. |
 | `Invoke-DocsBuild`         | Build the static site, the same way CI does.             |
+| `Invoke-DocsTest`          | Run the documentation gate.                              |
 
 `Invoke-DocsBuildImage` and `Invoke-PreviewDocs` are in the module too, but they
 drive Docker themselves, so they only run on a host — not inside the image.
@@ -162,6 +163,13 @@ published site for anything the homepage needs to reach.
 ```bash
 ./build/Test-Documentation.ps1
 ./build/Test-Documentation.ps1 -Path README.md
+```
+
+Those need PowerShell on the host. Without it, run the gate from the image:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest Invoke-DocsTest
 ```
 
 | Rule             | Severity | Meaning                                                      |

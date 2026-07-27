@@ -75,7 +75,30 @@ function Find-DocumentationRepositoryRoot {
     }
 }
 
-$repositoryRoot = Find-DocumentationRepositoryRoot -StartPath $PSScriptRoot
+# Normally this script lives inside the project it checks, so its own location
+# finds the root. It can also run from outside one -- the published image exposes
+# it as Invoke-DocsTest from /PSModule/Scripts, where no '.git' exists above it --
+# so fall back to the working directory, which is the mounted project. The script
+# location is tried first so a consumer's installed copy keeps resolving to its
+# own repository even when invoked from elsewhere.
+$repositoryRoot = $null
+foreach ($start in @($PSScriptRoot, (Get-Location).Path)) {
+    if ([string]::IsNullOrWhiteSpace($start)) { continue }
+    try {
+        $repositoryRoot = Find-DocumentationRepositoryRoot -StartPath $start
+        break
+    }
+    catch [System.IO.DirectoryNotFoundException] {
+        continue
+    }
+}
+
+if (-not $repositoryRoot) {
+    throw [System.IO.DirectoryNotFoundException]::new(
+        "Could not locate the repository root from '$PSScriptRoot' or " +
+        "'$((Get-Location).Path)': no '.git' was found in any parent directory."
+    )
+}
 
 if (-not $PSBoundParameters.ContainsKey('SettingsPath')) {
     $SettingsPath = Join-Path $repositoryRoot '.config' 'DocumentationRules.psd1'
@@ -240,7 +263,13 @@ function ConvertTo-HeadingSlug {
     $value = [regex]::Replace($value, '[`*_~]', '')
     $value = $value.Trim().ToLowerInvariant()
     $value = [regex]::Replace($value, '[^a-z0-9 \-]', '')
-    $value = [regex]::Replace($value, '\s+', '-')
+    # One hyphen per space, not one per run of whitespace. GitHub strips the
+    # punctuation and hyphenates each remaining space, so '## Phase 1 — Fixes'
+    # anchors as '#phase-1--fixes' with the doubled hyphen the removed em dash
+    # leaves behind. Collapsing here produced '#phase-1-fixes', so a file whose
+    # anchors worked on GitHub failed this gate and vice versa -- and the same
+    # files are read in both places.
+    $value = [regex]::Replace($value, '\s', '-')
 
     return $value.Trim('-')
 }

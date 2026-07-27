@@ -45,8 +45,8 @@
     Homepage front matter description.
 
 .PARAMETER SiteUrl
-    Published site origin, with a trailing slash, rewritten to '/' in the
-    generated homepage. Give this when the README links to the published site
+    Published site origin, with a trailing slash, rewritten to -RouteBasePath in
+    the generated homepage. Give this when the README links to the published site
     using absolute URLs, which is what makes one README work both on the code
     host and as the site homepage.
 
@@ -648,7 +648,8 @@ if (-not $WorkflowsOnly) {
             -ReadmePath $readmePath `
             -Title $Title `
             -Description $Description `
-            -SiteUrl $SiteUrl
+            -SiteUrl $SiteUrl `
+            -RouteBasePath $effectiveRouteBasePath
         Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
     }
     elseif (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
@@ -679,6 +680,7 @@ if (-not $WorkflowsOnly) {
         $rules = $rules.Replace("Title = 'Home'", "Title = '$($Title.Replace("'", "''"))'")
         $rules = $rules.Replace("Description = ''", "Description = '$($Description.Replace("'", "''"))'")
         $rules = $rules.Replace("SiteUrl = ''", "SiteUrl = '$($SiteUrl.Replace("'", "''"))'")
+    $rules = $rules.Replace("RouteBasePath = '/'", "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'")
 
         if (-not $generateHomepage) {
             # Drop the GeneratedFiles block entirely rather than leave a check for a
