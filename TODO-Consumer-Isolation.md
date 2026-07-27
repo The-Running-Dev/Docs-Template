@@ -94,13 +94,46 @@ opt-in. That meets the no-churn criterion without freezing new projects into the
 worse shape. The cost is that `/docs/*` and `/*` are then both in the wild, so the
 guide must state which shape a project is on.
 
-### Tasks
+### Implemented
 
-- [ ] Exclude the remaining `src/pages/` from the image via `.dockerignore`. The
-      template's own site is built from the repository by `release.yml`, not from
-      the image, so its pages are unaffected.
-- [ ] Make `scripts/docs-build.ps1` fail loudly if `siteDir` still contains
-      `src/pages` at build time, so the two paths cannot silently diverge again.
+`.dockerignore` now excludes `src/pages/` from the image, and
+`scripts/docs-build.ps1` removes any that survive before the overlay, warning
+loudly — the two paths can no longer diverge silently, which is what hid this.
+The exclusion is image-only: the files stay in the repository, this template's
+own site still serves them, and the ~226 files of components, hooks, tests and
+`api/` behind them keep their only caller.
+
+Verified against an image built from these changes:
+
+| Check                                                 | Result                    |
+| ----------------------------------------------------- | ------------------------- |
+| Image ships `src/pages`                               | no                        |
+| Docs-only consumer routes                             | `/docs/` only             |
+| Duplicate-route warnings                              | 0                         |
+| Built-ins still emitted                               | `404.html`, `sitemap.xml` |
+| Consumer supplying `docs/src/pages/index.md` owns `/` | yes, 0 duplicate warnings |
+
+**One consequence the report did not predict, found by building it.** With no
+root page, Docusaurus reports broken links — the theme's own 404 page and the
+docs navbar both link to `/`, which no longer exists:
+
+```text
+- Broken link on source page path = /404.html:  -> linking to /
+- Broken link on source page path = /docs/:     -> linking to /
+```
+
+Consumers ship `onBrokenLinks: 'warn'`, so builds still pass, but anyone who
+raises it to `throw` — which the guide presents as reasonable — fails on links
+they did not write. This makes the root question mandatory rather than
+cosmetic, and it settles it: with `routeBasePath: '/'` the docs root _is_ `/`,
+and the same build reports **zero** broken links.
+
+### Remaining tasks
+
+- [x] Exclude `src/pages/` from the image via `.dockerignore`.
+- [x] `scripts/docs-build.ps1` strips and warns about any `src/pages` the image
+      still carries, checked before the overlay so a consumer's own pages are not
+      mistaken for the leak.
 - [ ] Reconcile `docs/Dockerfile`: once the image ships no pages, the line that
       removes `src/pages` there is dead. Remove it, or keep it as
       belt-and-braces with a comment saying which layer is authoritative.
