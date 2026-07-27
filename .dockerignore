@@ -213,6 +213,12 @@ tsconfig.json
 Dockerfile
 data/
 
+# The template's own docs are not shipped to consumers either: a consumer
+# overlays their own docs/ onto /template, and anything left here would be
+# sample content they inherit. Excluded rather than copied and then deleted in
+# the Dockerfile, so it never enters the build context at all.
+docs/
+
 # The template's own pages are not shipped to consumers. Docusaurus compiles
 # everything under src/pages into routes, and those routes come from the image's
 # siteDir rather than the mounted content, so a consumer cannot suppress them:
