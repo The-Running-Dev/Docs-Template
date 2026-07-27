@@ -90,7 +90,21 @@ Docker.
 Cost of leaving it: none today; a confusing failure the day a container command
 is added.
 
-## 6. Planning documents are accumulating
+## 6. The generator fallback is a workaround at the wrong layer
+
+`build-psmodule.ps1` cannot assume `SubZeroDev.PSGenerator` is installed, so it
+falls back to copying the module out of the published generator image with
+`docker create` and `docker cp`. That works, and every release since #42 has
+gone through it, but the build agent is where the generator belongs — the
+fallback exists only because it is not there yet.
+
+- [ ] Delete the fallback once the build agent ships `SubZeroDev.PSGenerator`.
+      The installed-module branch above it then takes over unchanged.
+
+Cost of leaving it: every CI run pulls an image to obtain a PowerShell module,
+and this repository carries container plumbing that is not really its concern.
+
+## 7. Planning documents are accumulating
 
 Five now sit at the repository root:
 
@@ -98,7 +112,7 @@ Five now sit at the repository root:
 | ---------------------------- | ----------------------------------------------- |
 | `TODO.md`                    | Standing backlog — test health, coverage policy |
 | `TODO-Next.md`               | This file: open follow-ups                      |
-| `TODO-Docs-Convergence.md`   | Record of #42, complete                         |
+| `TODO-Docs-Convergence.md`   | Record of #42, complete but for §6 below        |
 | `TODO-Consumer-Isolation.md` | Record of #44, complete but for items 1 and 2   |
 | `DOCS-BUILD-PLAN.md`         | Record of the container build split, complete   |
 
