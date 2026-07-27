@@ -116,9 +116,12 @@ docker run --rm \
   immediately with the list of what the image actually exposes, rather than a
   generic "command not found."
 
-If you're setting up a project consumer-side, `planning/AGENTS-docs-section.md`
-is the equivalent section written to be copied _into_ that project's own
-`AGENTS.md` — the two must not contradict each other.
+If you're setting up a project consumer-side, see
+[Installing the Docs System](docs/getting-started/installing-the-docs-system.md).
+It is written to be pasted into that project's own `AGENTS.md`, so an agent
+working there has it to hand — and it is a published page of this site, so it is
+covered by the documentation gate rather than drifting quietly. The two must not
+contradict each other.
 
 ### Consuming this template: from a local checkout instead
 

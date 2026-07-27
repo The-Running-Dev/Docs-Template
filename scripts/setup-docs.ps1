@@ -723,5 +723,5 @@ if (-not $SkipWorkflow) {
     Write-Host '  5. Make the docs checks required, or a red run will not block a merge' -ForegroundColor White
 }
 Write-Host ''
-Write-Host '[SETUP] Note: packages published to GHCR are private by default. If your' -ForegroundColor DarkGray
-Write-Host '        documentation tells readers to pull an image, confirm its visibility.' -ForegroundColor DarkGray
+Write-Host '[SETUP] Note: the base image is public, so CI needs no registry credentials.' -ForegroundColor DarkGray
+Write-Host '        Pointing -BaseImage at a private fork or mirror does: set REGISTRY_TOKEN.' -ForegroundColor DarkGray
