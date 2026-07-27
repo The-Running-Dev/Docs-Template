@@ -256,20 +256,34 @@ jobs:
           dotnet tool install GitVersion.Tool --version '6.*' --tool-path $toolPath
           if ($LASTEXITCODE -ne 0) { throw "GitVersion install failed with exit code $LASTEXITCODE." }
 
-          $gitVersion = & (Join-Path $toolPath 'dotnet-gitversion') /output json | ConvertFrom-Json
+          # /showvariable with quiet verbosity returns one bare value. The
+          # earlier version of this step piped `/output json` into
+          # ConvertFrom-Json and failed here with "Error parsing Infinity
+          # value": GitVersion had written log text alongside the JSON, and the
+          # parser choked on the first character of it. Asking for a single
+          # variable removes the parsing step entirely rather than trying to
+          # filter logs out of a stream.
+          $version = (& (Join-Path $toolPath 'dotnet-gitversion') `
+              /output json /showvariable MajorMinorPatch /verbosity Quiet | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "GitVersion failed with exit code $LASTEXITCODE." }
+          if ([string]::IsNullOrWhiteSpace($version)) { throw 'GitVersion returned no version.' }
 
-          # FullSemVer carries build metadata after a '+', which is legal in
-          # SemVer and illegal in a Docker tag. Replacing it with '.' keeps the
-          # value unique per commit -- the whole point of an immutable tag,
-          # since with no git tags yet MajorMinorPatch stays 1.0.0 and a bare
-          # :1.0.0 would be overwritten by every push.
-          $imageVersion = $gitVersion.FullSemVer -replace '\+', '.'
+          # MajorMinorPatch rather than FullSemVer, and the commit appended
+          # separately. FullSemVer embeds a branch-derived pre-release label,
+          # and Actions always checks out a detached HEAD, so GitVersion can
+          # resolve the branch to '-no-branch-' and bake that into the tag.
+          # MajorMinorPatch is identical detached or not -- verified both ways.
+          #
+          # The short commit is what makes the tag immutable: the repository has
+          # no git tags yet, so MajorMinorPatch stays 1.0.0 for every build and
+          # a bare :1.0.0 would be overwritten by each push.
+          $imageVersion = "$version-$($env:GITHUB_SHA.Substring(0, 7))"
           if ($imageVersion -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$') {
-              throw "GitVersion produced '$imageVersion', which is not a valid Docker tag."
+              throw "Computed '$imageVersion', which is not a valid Docker tag."
           }
 
-          Write-Host "SemVer:     $($gitVersion.SemVer)"
-          Write-Host "ImageTag:   $imageVersion"
+          Write-Host "Version:  $version"
+          Write-Host "ImageTag: $imageVersion"
           "version=$imageVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Build docs-template Image (validate, no push)
