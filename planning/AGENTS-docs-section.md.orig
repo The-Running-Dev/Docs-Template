@@ -1,0 +1,120 @@
+# Documentation System
+
+This project's documentation is installed from
+[Docusaurus-Template](https://github.com/The-Running-Dev/Docusaurus-Template).
+Re-run the installer with `-Overwrite` to pick up upstream fixes.
+
+## Layout
+
+| Path                              | Owner    | Notes                                        |
+| --------------------------------- | -------- | -------------------------------------------- |
+| `docs/docs/**`                     | you      | Authored Markdown. Add pages here.            |
+| `docs/docs/index.md`               | generated | **Do not edit.** Built from `README.md`.      |
+| `docs/docusaurus.config.ts`        | you      | Site title, URL, navbar, broken-link policy.  |
+| `docs/sidebar.ts`                  | you      | Sidebar structure.                            |
+| `docs/Dockerfile`, `.dockerignore` | template | Local preview only.                           |
+| `docs.ps1`                         | template | Local preview entry point.                    |
+| `build/*.ps1`                      | template | Homepage generator and documentation gate.    |
+| `.config/DocumentationRules.psd1`  | you      | Gate rules. Tune terminology and exclusions.  |
+| `.github/workflows/docs*.yml`      | template | Verify, gate, and deploy.                     |
+
+Files marked `template` are replaced wholesale on the next `-Overwrite` install.
+Do not edit them — put project-specific settings in `DocumentationRules.psd1`,
+`docusaurus.config.ts`, or `sidebar.ts` instead.
+
+## The homepage is generated — never edit it by hand
+
+`docs/docs/index.md` is produced from `README.md` by
+`build/ConvertTo-DocumentationHomepage.ps1`. The gate re-runs that generator and
+fails if the committed copy differs, so a hand edit is reverted in effect: the
+next regeneration overwrites it, and CI fails until it matches.
+
+**To change the homepage, edit `README.md`,** then regenerate:
+
+```powershell
+./docs.ps1 -BuildOnly    # regenerates docs/docs/index.md as a side effect
+```
+
+Commit `README.md` and the regenerated `docs/docs/index.md` together. A README
+change committed without the regenerated homepage fails the gate with
+`GeneratedFile: Generated from 'README.md' but the committed copy differs`.
+
+### Known trap: relative links in the README
+
+The generator rewrites the configured `SiteUrl` to `/`, but does **not** rewrite
+relative links. A README link that is valid at the repository root breaks once
+copied one directory deeper into `docs/docs/index.md`:
+
+```
+README.md            See [the guide](docs/guide.md).      valid
+docs/docs/index.md   See [the guide](docs/guide.md).      resolves to
+                                                          docs/docs/docs/guide.md
+```
+
+The gate reports this as a `MarkdownLink` error against `docs/docs/index.md`. In
+a README, prefer absolute links (to the code host or the published site) over
+repository-relative ones for anything the homepage should reach.
+
+## Running the gate
+
+```powershell
+./build/Test-Documentation.ps1                          # whole repository
+./build/Test-Documentation.ps1 -Path README.md          # one file or directory
+./build/Test-Documentation.ps1 -TreatWarningsAsErrors   # strict
+```
+
+The project must be a git repository — the gate locates the repository root by
+walking up for a `.git` marker and errors clearly if there is none.
+
+### What it checks
+
+| Rule             | Severity | Meaning                                                       |
+| ---------------- | -------- | ------------------------------------------------------------- |
+| `MarkdownLink`   | Error    | Relative link target does not exist on disk.                   |
+| `MarkdownAnchor` | Error    | `#fragment` matches no heading in the target document.         |
+| `GeneratedFile`  | Error    | A generated file no longer matches its source.                 |
+| `Terminology`    | Warning  | Product name cased inconsistently, e.g. `Github` → `GitHub`.   |
+
+Errors fail the run. Warnings are reported and do not block unless
+`-TreatWarningsAsErrors` is passed.
+
+External `http(s)`, `mailto`, and site-absolute (`/...`) links are deliberately
+out of scope — the gate never makes network calls, and Docusaurus' own
+broken-link pass covers site-absolute routes at build time.
+
+### It will not flag your code samples
+
+Fenced blocks, inline code spans, link targets, and bare URLs are blanked before
+the rules run, with line and column numbers preserved. A sample that
+deliberately shows `Github` or `npm install` is not a finding. If something in
+prose is flagged that should not be, add it to `Terminology` or `ExcludedFiles`
+in `.config/DocumentationRules.psd1` rather than working around the gate.
+
+## Local preview
+
+```powershell
+./docs.ps1              # build the overlay image and serve on :3000
+./docs.ps1 -Live        # hot-reload edits under docs/
+./docs.ps1 -BuildOnly   # build only, do not serve
+```
+
+Requires Docker. The site is built by overlaying `docs/` onto the published base
+image, so no local Node install is needed. `docs.ps1` regenerates the homepage on
+every run unless `-NoHomepage` is passed.
+
+## CI
+
+- `docs.yml` — the only workflow with triggers; calls the other two.
+- `docs-quality.yml` — runs the gate on pull requests. Pure PowerShell, no container.
+- `docs-ci.yml` — builds the site, and archives the Pages artifact so the deploy
+  path is exercised before merge rather than after.
+- `docs-deploy.yml` — deploys to GitHub Pages on push to the default branch.
+
+Enable GitHub Pages with source "GitHub Actions", and mark the docs checks
+**required** — otherwise a red run does not block a merge.
+
+## Before you commit documentation changes
+
+1. Edited `README.md`? Regenerate with `./docs.ps1 -BuildOnly` and commit both files.
+2. Run `./build/Test-Documentation.ps1` and resolve every Error.
+3. Added a page under `docs/docs/`? Check it appears in `docs/sidebar.ts`.
