@@ -336,7 +336,9 @@ one, revert the fix and confirm the test goes red before keeping it.
 - **`trailingSlash: false` means `/next/` 404s while `/next` works.** Do not write
   trailing slashes in links.
 - **GHCR packages are private by default.** A documented `docker pull` fails for
-  everyone but the owner until visibility is changed.
+  everyone but the owner until visibility is changed. `docs-template` has since
+  been made public, confirmed by fetching its manifest anonymously, so consumers
+  need no registry credentials to pull the base image.
 - **Docusaurus versioning is deliberately not used.** With a single version, a
   snapshot is a second copy to keep in step, and re-cutting one requires
   temporarily removing `lastVersion` because Docusaurus refuses to load a config

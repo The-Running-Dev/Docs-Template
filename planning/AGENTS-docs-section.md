@@ -200,19 +200,52 @@ merge instead of first appearing on `main`.
 `deploy` holds the `github-pages` environment and concurrency group, so verify
 runs never contend for the Pages lock.
 
-## Setup the installer cannot do
+## Deploying
 
-- Enable GitHub Pages for the repository with source **GitHub Actions**.
-- Make the docs checks **required** on the default branch, or a red run will not
-  block a merge.
-- If the base image is a private package, set the `REGISTRY_TOKEN` secret or make
-  the package visible to this repository — CI cannot pull it otherwise.
+The workflows do the work; two things must be set up once, by hand, because the
+installer cannot do them.
+
+**1. Enable GitHub Pages.** Repository → _Settings_ → _Pages_ → _Source_:
+**GitHub Actions**. Without this the deploy job fails at `configure-pages`.
+
+**2. Make the checks required** on the default branch, or a red run reports but
+does not block a merge. The contexts, exactly as CI reports them:
+
+```text
+Documentation links and terminology
+Verify Documentation Build
+Build and Deploy Documentation
+```
+
+No registry credentials are needed: `ghcr.io/the-running-dev/docs-template` is a
+public package, so the `github.token` the workflows already fall back to is
+enough. The `REGISTRY_TOKEN` secret they also accept is only required if you
+point `-BaseImage` at a private fork or mirror.
+
+Then the flow is automatic:
+
+- **Pull request** → gate runs, site builds, Pages artifact is archived. Nothing
+  is published.
+- **Push to `main`** → `docs-deploy.yml` builds the site in the base image,
+  uploads the Pages artifact, and deploys it.
+
+The published URL is the `url` plus `baseUrl` in `docs/docusaurus.config.ts`,
+which `-SiteUrl` set at install time. Deployments appear under the repository's
+_Environments → github-pages_.
+
+To reproduce what CI builds, without pushing:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest \
+  Invoke-DocsBuild -SourceDocs /work/docs -OutputPath /work/artifacts/docs
+```
 
 ## Before you commit documentation changes
 
 1. Edited `README.md`? Run `./docs.ps1 -BuildOnly` and commit the regenerated
    `docs/docs/index.md` alongside it.
-2. Run `./build/Test-Documentation.ps1` and resolve every finding — warnings
-   included, since CI blocks on them.
+2. Run `./build/Test-Documentation.ps1` and resolve every error. Warnings do
+   not block CI, but fix them anyway — nothing else will.
 3. Added a page under `docs/docs/`? Confirm it appears where you expect in the
    sidebar.
