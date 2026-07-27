@@ -58,9 +58,9 @@
 
 ## Template Bootstrap
 
-Two different audiences read this section: a project *consuming* this template
+Two different audiences read this section: a project _consuming_ this template
 (install the docs system into an unrelated repository), and someone
-*developing this repository itself* (running its own Docusaurus site). The
+_developing this repository itself_ (running its own Docusaurus site). The
 commands are not interchangeable.
 
 ### Consuming this template: install the docs system (container, recommended)
@@ -90,16 +90,21 @@ docker run --rm \
   image's `WORKDIR` is `/template`. Omit both the mount and `-ProjectDir` and
   the command refuses to run rather than installing into the template image
   itself.
-- **A bare `docker run <image>` with no command is unchanged**: it still
-  starts the dev server (`pnpm run start:docker`). `docker run <image> pwsh`
-  (or `sh` / `bash`) drops into a shell directly, same as before an entrypoint
-  existed. Any other first word is looked up as an exported
-  `DocusaurusTemplate` module command; an unrecognized name fails immediately
-  with the list of what the image actually exposes, rather than a generic
-  "command not found."
+- **A bare `docker run <image>` with no command is unchanged**: it still runs
+  `pnpm run start:docker`. Note that this has never been useful on its own —
+  the image deliberately ships without a `docs/` tree (the `Dockerfile`
+  deletes it, so downstream projects don't inherit sample content), so the dev
+  server exits with `The docs folder does not exist for version "current"`
+  unless something is mounted over `/template/docs`. Use `scripts/preview-docs.ps1`
+  (or the `docs.ps1` installed into a consumer project), which sets up the
+  mounts. `docker run <image> pwsh` (or `sh` / `bash`) drops into a shell
+  directly, same as before an entrypoint existed. Any other first word is
+  looked up as an exported `DocusaurusTemplate` module command; an
+  unrecognized name fails immediately with the list of what the image actually
+  exposes, rather than a generic "command not found."
 
 If you're setting up a project consumer-side, `planning/AGENTS-docs-section.md`
-is the equivalent section written to be copied *into* that project's own
+is the equivalent section written to be copied _into_ that project's own
 `AGENTS.md` — the two must not contradict each other.
 
 ### Consuming this template: from a local checkout instead

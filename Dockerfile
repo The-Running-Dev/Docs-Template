@@ -91,11 +91,17 @@ ENV HOME=/tmp
 # Expose port 3000
 EXPOSE 3000
 
-# entrypoint.sh dispatches on argv[0]: no args (or 'dev') starts the dev
-# server via start:docker, preserving today's bare `docker run <image>`
-# behavior; 'pwsh'/'sh'/'bash' exec directly; anything else is looked up as an
-# exported DocusaurusTemplate command. Invoked via `/bin/sh <path>` rather than
-# relying on the file's own execute bit or shebang, so a COPY that lands
-# without the execute bit still runs.
+# entrypoint.sh dispatches on argv[0]: no args (or 'dev') runs start:docker,
+# preserving today's bare `docker run <image>` behavior; 'pwsh'/'sh'/'bash'
+# exec directly; anything else is looked up as an exported DocusaurusTemplate
+# command. Invoked via `/bin/sh <path>` rather than relying on the file's own
+# execute bit or shebang, so a COPY that lands without the execute bit still
+# runs.
+#
+# 'dev' is preserved for compatibility, not because it works unaided: the docs
+# tree is deleted above, so start:docker exits with "The docs folder does not
+# exist" unless something is mounted over /template/docs. scripts/preview-docs.ps1
+# is what sets those mounts up. That was equally true before this ENTRYPOINT
+# existed -- CMD ran the same command -- so nothing here regresses it.
 ENTRYPOINT ["/bin/sh", "/template/scripts/entrypoint.sh"]
 CMD ["dev"]

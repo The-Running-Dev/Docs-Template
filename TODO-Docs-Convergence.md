@@ -56,10 +56,10 @@ hands deploy credentials to the gate and build jobs, which need only read.
 Splitting is what preserves least privilege — this is why the consumer's
 single-file `docs-ci.yml` is not adopted.
 
-| File              | Jobs                                | Permissions                              | Triggers               |
-| ----------------- | ----------------------------------- | ---------------------------------------- | ---------------------- |
-| `docs-ci.yml`     | `documentation` (gate) · `verify`   | `contents: read`, `packages: read`       | PR, push, dispatch     |
-| `docs-deploy.yml` | `deploy`                            | above + `pages: write`, `id-token: write` | push to `main`, dispatch |
+| File              | Jobs                              | Permissions                               | Triggers                 |
+| ----------------- | --------------------------------- | ----------------------------------------- | ------------------------ |
+| `docs-ci.yml`     | `documentation` (gate) · `verify` | `contents: read`, `packages: read`        | PR, push, dispatch       |
+| `docs-deploy.yml` | `deploy`                          | above + `pages: write`, `id-token: write` | push to `main`, dispatch |
 
 - [x] Fold the gate job from `docs-quality.yml` into
       `scripts/template/docs-ci.yml`; give that file real triggers (it is
@@ -77,13 +77,13 @@ single-file `docs-ci.yml` is not adopted.
 - [x] Delete `scripts/setup-docs-workflow.ps1`; fold its two-file install back
       into `setup-docs.ps1`, removing the split-reporting note at
       `scripts/setup-docs.ps1:487-492`.
-- [x] Rework `-SkipGate` so it excises a *job* from `docs-ci.yml` rather than
+- [x] Rework `-SkipGate` so it excises a _job_ from `docs-ci.yml` rather than
       skipping a whole file, using the same start/end marker technique the
       `GeneratedFiles` block already uses. Factored into a shared
       `Remove-MarkedBlock` helper used by both.
-- [x] Keep job `name:` values byte-identical — `Documentation links and
-      terminology`, `Verify Documentation Build`, `Build and Deploy
-      Documentation` — so any required-status-check context keeps matching.
+- [x] Keep job `name:` values byte-identical, so any required-status-check
+      context keeps matching. The three are `Documentation links and terminology`,
+      `Verify Documentation Build`, and `Build and Deploy Documentation`.
 - [x] Copy the workflow from the payload. Do **not** embed it as a here-string
       the way `planning/Install-DocsSystem.ps1:461-570` does; that reintroduces
       the drift this effort removes.
@@ -117,7 +117,7 @@ real `docker run` build, not just by reading:
 
 ### Upgrade path — found in final review, fixed
 
-Collapsing four workflow files into two left every *existing* consumer broken
+Collapsing four workflow files into two left every _existing_ consumer broken
 on upgrade, because the installer wrote the two new files but never removed
 the two it had retired:
 
@@ -157,7 +157,7 @@ delete both retired files whenever it installs workflows.
 ## P2 — Container entrypoint and an importable module
 
 Two blocking facts: the image has **no `ENTRYPOINT`** (`CMD` is the dev server),
-and `PSModule/PSModule.psd1` is a *generator input* for
+and `PSModule/PSModule.psd1` is a _generator input_ for
 `SubZeroDev.ContainerPSGenerator` — `Id`/`Commands`/`SourcePath`, no
 `RootModule`, no `FunctionsToExport`. It cannot be imported. Both were built,
 separately, as planned.
@@ -191,7 +191,7 @@ separately, as planned.
 ### Scripts deliberately NOT wrapped as container commands
 
 `scripts/docs-build-image.ps1` and `scripts/preview-docs.ps1` both invoke
-`docker` themselves — they build/run *this same image* from the host side.
+`docker` themselves — they build/run _this same image_ from the host side.
 Wrapping them as in-container commands would need a Docker socket and CLI the
 image does not have, the identical docker-in-docker problem flagged against
 `planning/Install-DocsSystem.ps1`'s payload acquisition in Phase 0. Only
@@ -208,7 +208,7 @@ args, forward to a resolved command) will look reusable to a future editor.
 1. **Splatting `@array` on a `[string[]]` captured via
    `ValueFromRemainingArguments` binds every element positionally, not by
    name.** `-ProjectDir /work -Title Foo` splatted this way lands `ProjectDir
-   = '-ProjectDir'`, `Title = '/work'` — confirmed by reproduction outside
+= '-ProjectDir'`, `Title = '/work'` — confirmed by reproduction outside
    Docker before touching the container at all. Fixed by dropping the formal
    `param()` block entirely and slicing the script's own automatic `$args`
    instead (`$args[0]`, `$args[1..($args.Count-1)]`) — that shape reliably
@@ -246,16 +246,27 @@ Acceptance criteria — all verified against the real published image via
 image rebuild (the payload files were already proven byte-identical to the
 image in Phase 0):
 
-- [x] `docker run --rm -v <scratch>:/work -w /work <image> Invoke-SetupDocs
-      -ProjectDir /work -Title '...'` installs successfully — verified with
-      Phase 1 and Phase 2 mounted together, producing the same two-workflow,
-      correctly-named output Phase 1 verified alone.
+- [x] A real `docker run` against a scratch project, invoking `Invoke-SetupDocs`
+      with `-ProjectDir /work` and a `-Title`, installs successfully — verified
+      with Phase 1 and Phase 2 mounted together, producing the same
+      two-workflow, correctly-named output Phase 1 verified alone.
 - [x] `-Overwrite` reaches the real script as a working switch through the
       dispatcher — confirmed `[SETUP] Replaced (11)` on a second run.
 - [x] `Invoke-DocsBuild` runs the actual Docusaurus build inside the
       container and produces `artifacts/docs/index.html`.
-- [x] A bare `docker run <image>` (and explicit `dev`) still starts the dev
-      server; `pwsh`/`sh`/`bash` still drop into a shell.
+- [x] A bare `docker run <image>` (and explicit `dev`) still runs
+      `start:docker`; `pwsh`/`sh`/`bash` still drop into a shell.
+      **Correction to an earlier claim in this file**: that was first recorded
+      as "still starts the dev server", based on seeing the prestart/prebuild
+      output scroll past. Running the published image bare shows the dev
+      server then exiting, because the docs folder for version "current" does
+      not exist. The `Dockerfile` deletes `/template/docs` on purpose so
+      consumers don't inherit sample content, so `start:docker` only works
+      with something mounted over it (which `scripts/preview-docs.ps1` does).
+      This is pre-existing on `main` and unchanged by Phase 2 — `CMD` ran the
+      same command before the `ENTRYPOINT` existed — but the phrasing
+      overstated it. `AGENTS.md` and the `Dockerfile` comment now say so
+      explicitly rather than implying a bare run is useful.
 - [x] An unrecognized command name fails immediately with the list of what
       the image actually exposes (`Invoke-DocsBuild, Invoke-SetupDocs`).
 - [x] The `/template` guard fires on a bare `Invoke-SetupDocs` with no mount
@@ -264,30 +275,28 @@ image in Phase 0):
 - [x] `Test-ModuleManifest` and the PowerShell AST parser both accept every
       new `.ps1`/`.psd1`/`.psm1` file with zero errors.
 - [x] Full `docker build` run against the modified `Dockerfile` — caught two
-      real issues the bind-mount tests couldn't, both fixed:
-      1. `ENV PSModulePath="/template/PowerShell:${PSModulePath}"` referenced
-         a Dockerfile build-arg that was never defined (Docker's `${VAR}`
-         substitution only sees prior `ARG`/`ENV` values, not pwsh's own
-         runtime environment), flagged by the builder's own linter and
-         confirmed by inspecting the baked-in value: a bare trailing colon,
-         not an appended path. Harmless in practice — pwsh always merges its
-         own default module paths in ahead of whatever is preset, confirmed
-         by `Get-Module -ListAvailable` still resolving built-ins — but fixed
-         by dropping the meaningless suffix rather than leaving a warning
-         uninvestigated.
-      2. **Real bug**: `--user "$(id -u):$(id -g)"` — the invocation
-         `AGENTS.md` recommends specifically to avoid root-owned output —
-         left an unmapped UID with `HOME=/`, which is not writable. pwsh
-         fell back to writing its startup-profile cache
-         (`StartupProfileData-NonInteractive`) into the caller's project
-         directory instead. Root cause isolated by testing `-e HOME=/tmp`
-         and `POWERSHELL_TELEMETRY_OPTOUT=1` independently — only `HOME`
-         mattered. Fixed with `ENV HOME=/tmp` in the `Dockerfile` (`/tmp` is
-         world-writable regardless of UID, unlike anywhere under
-         `/template`, which root owns from the build) rather than expecting
-         every caller to pass `-e HOME=/tmp` themselves. Verified the stray
-         file is gone with `--user` and that root-run behavior (no `--user`)
-         is unaffected.
+      real issues the bind-mount tests couldn't, both fixed: 1. `ENV PSModulePath="/template/PowerShell:${PSModulePath}"` referenced
+      a Dockerfile build-arg that was never defined (Docker's `${VAR}`
+      substitution only sees prior `ARG`/`ENV` values, not pwsh's own
+      runtime environment), flagged by the builder's own linter and
+      confirmed by inspecting the baked-in value: a bare trailing colon,
+      not an appended path. Harmless in practice — pwsh always merges its
+      own default module paths in ahead of whatever is preset, confirmed
+      by `Get-Module -ListAvailable` still resolving built-ins — but fixed
+      by dropping the meaningless suffix rather than leaving a warning
+      uninvestigated. 2. **Real bug**: `--user "$(id -u):$(id -g)"` — the invocation
+      `AGENTS.md` recommends specifically to avoid root-owned output —
+      left an unmapped UID with `HOME=/`, which is not writable. pwsh
+      fell back to writing its startup-profile cache
+      (`StartupProfileData-NonInteractive`) into the caller's project
+      directory instead. Root cause isolated by testing `-e HOME=/tmp`
+      and `POWERSHELL_TELEMETRY_OPTOUT=1` independently — only `HOME`
+      mattered. Fixed with `ENV HOME=/tmp` in the `Dockerfile` (`/tmp` is
+      world-writable regardless of UID, unlike anywhere under
+      `/template`, which root owns from the build) rather than expecting
+      every caller to pass `-e HOME=/tmp` themselves. Verified the stray
+      file is gone with `--user` and that root-run behavior (no `--user`)
+      is unaffected.
 
 ## P3 — Manifest parameter surface
 
