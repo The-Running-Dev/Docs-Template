@@ -198,24 +198,24 @@ learn the route base, which today lives only in `docusaurus.config.ts`.
 - [x] `scripts/docs-build.ps1` strips and warns about any `src/pages` the image
       still carries, checked before the overlay so a consumer's own pages are not
       mistaken for the leak.
-- [ ] Reconcile `docs/Dockerfile`: once the image ships no pages, the line that
+- [x] Reconcile `docs/Dockerfile`: once the image ships no pages, the line that
       removes `src/pages` there is dead. Remove it, or keep it as
       belt-and-braces with a comment saying which layer is authoritative.
-- [ ] Implement the chosen root behaviour and document how a consumer owns `/`.
-- [ ] Extend the "Serving path" section of the consumer guide. It does not
+- [x] Implement the chosen root behaviour and document how a consumer owns `/`.
+- [x] Extend the "Serving path" section of the consumer guide. It does not
       currently mention leaked pages or the preview/CI divergence at all, so this
       is new content rather than a correction, and it should describe the fixed
       behaviour once P0 lands.
 
 Acceptance criteria (from the report, plus one):
 
-- [ ] A docs-only consumer build emits no route the consumer did not author,
+- [x] A docs-only consumer build emits no route the consumer did not author,
       other than Docusaurus built-ins (`404.html`, `sitemap.xml`, `assets/`).
-- [ ] `find <out> -name index.html` yields only `/docs/*` and, at most, a root
+- [x] `find <out> -name index.html` yields only `/docs/*` and, at most, a root
       that is empty-by-design or a redirect.
-- [ ] A consumer can define `/` without shadowing an image file.
-- [ ] Existing `/docs/*` routes are unchanged — no URL churn.
-- [ ] **Local preview and the CI build produce the same route set.** Verify both,
+- [x] A consumer can define `/` without shadowing an image file.
+- [x] Existing `/docs/*` routes are unchanged — no URL churn.
+- [x] **Local preview and the CI build produce the same route set.** Verify both,
       not just CI; their disagreement is what hid this.
 
 ## P1 — `Invoke-DocsBuild` fails under `--user`
@@ -242,7 +242,7 @@ pushing". The instruction fails for everyone who follows it. `--user` is correct
 for `Invoke-SetupDocs`, which writes into the mount, and wrong for
 `Invoke-DocsBuild`, which writes into the image.
 
-- [ ] Fix the guide: drop `--user` from the `Invoke-DocsBuild` example and say why
+- [x] Fix the guide: drop `--user` from the `Invoke-DocsBuild` example and say why
       the two commands differ.
 - [ ] Consider having `docs-build.ps1` stage into a writable directory instead of
       `/template`, so `--user` works uniformly. Larger change; the doc fix is the
@@ -271,11 +271,13 @@ it could not if the three disagreed.
 derives `#phase-1--correctness-fixes` for `## Phase 1 — Correctness fixes`. The
 same file cannot satisfy both, and both are read.
 
-- [ ] Match GitHub's algorithm: strip the em dash, keep the separator either side,
+- [x] Match GitHub's algorithm: strip the em dash, keep the separator either side,
       collapsing nothing.
 - [ ] Add a regression test with an em dash heading, and one with an en dash.
-- [ ] If matching is rejected, document the divergence in the consumer guide's
-      gate section rather than leaving it to be discovered.
+      **Not done.** This repository has no PowerShell test harness, so the fix
+      was verified by running the slug function directly rather than by a
+      committed test. Adding one is a change of its own.
+- [x] Matching was not rejected, so there is no divergence left to document.
 
 ### 2. `Test-Documentation.ps1` is documented as runnable but is not exposed
 
@@ -283,9 +285,9 @@ The guide says `./build/Test-Documentation.ps1`; the dispatcher rejects it, sinc
 only `Invoke-DocsBuild`, `Invoke-SetupDocs` and `Invoke-SetupDocsWorkflow` are
 exposed. It works only with host `pwsh`, or via `--entrypoint pwsh`.
 
-- [ ] Expose it as `Invoke-DocsTest` in `PSModule/PSModule.psd1` and regenerate,
+- [x] Expose it as `Invoke-DocsTest` in `PSModule/PSModule.psd1` and regenerate,
       so the documented command works from the image.
-- [ ] Note that the gate needs the consumer's `build/` and `.config/` at their
+- [x] Note that the gate needs the consumer's `build/` and `.config/` at their
       installed paths, so the container invocation needs the mount — verify before
       documenting it.
 
@@ -294,8 +296,8 @@ exposed. It works only with host `pwsh`, or via `--entrypoint pwsh`.
 `-ReadmePath` is mandatory and undocumented, and output goes to stdout rather than
 to a file, so the obvious invocation appears to do nothing.
 
-- [ ] Default `-ReadmePath` to `<ProjectDir>/README.md`.
-- [ ] Add `-OutputPath` that writes in place, keeping stdout as the default so
+- [x] Default `-ReadmePath` to `<ProjectDir>/README.md`.
+- [x] Add `-OutputPath` that writes in place, keeping stdout as the default so
       existing callers — `setup-docs.ps1` and the gate — are unaffected.
 
 ### 4. Generated `sidebar.ts` carries a stale comment
@@ -303,7 +305,7 @@ to a file, so the obvious invocation appears to do nothing.
 Every consumer repo receives a comment referring to `engine/` and `games/`, folders
 from the project this template was extracted from.
 
-- [ ] Rewrite the comment in `scripts/template/sidebar.ts` in consumer terms.
+- [x] Rewrite the comment in `scripts/template/sidebar.ts` in consumer terms.
 
 ## Confirmed working — do not regress
 
