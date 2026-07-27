@@ -74,13 +74,18 @@ installer cannot do them.
 **GitHub Actions**. Without this the deploy job fails at `configure-pages`.
 
 **2. Make the checks required** on the default branch, or a red run reports but
-does not block a merge. The contexts, exactly as CI reports them:
+does not block a merge. Require exactly these two — the ones that run on a pull
+request, named as CI reports them:
 
 ```text
 Documentation links and terminology
 Verify Documentation Build
-Build and Deploy Documentation
 ```
+
+**Do not require `Build and Deploy Documentation`.** It comes from
+`docs-deploy.yml`, which triggers only on push to `main`, so it never reports on
+a pull request. Requiring it leaves every pull request waiting forever on a
+check that will not arrive.
 
 No registry credentials are needed: `ghcr.io/the-running-dev/docs-template` is a
 public package, so the `github.token` the workflows already fall back to is
@@ -94,8 +99,12 @@ Then the flow is automatic:
 - **Push to `main`** → `docs-deploy.yml` builds the site in the base image,
   uploads the Pages artifact, and deploys it.
 
-The published URL is the `url` plus `baseUrl` in `docs/docusaurus.config.ts`,
-which `-SiteUrl` set at install time. Deployments appear under the repository's
+The published URL is the `url` plus `baseUrl` in `docs/docusaurus.config.ts`.
+`-SiteUrl` sets **`url` only** — `baseUrl` keeps the template's `/`. For a
+GitHub Pages _project_ site, served at `https://<owner>.github.io/<repo>/`, that
+is wrong and every asset 404s, so set `baseUrl: '/<repo>/'` by hand after
+installing. A user or organisation site, or a custom domain served from the
+root, can leave it alone. Deployments appear under the repository's
 _Environments → github-pages_.
 
 To reproduce what CI builds, without pushing:
