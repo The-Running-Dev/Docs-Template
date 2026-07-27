@@ -61,10 +61,30 @@ if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) {
 
 Import-Module $moduleManifest -Force -ErrorAction Stop
 
+# Commands that drive a Docker daemon rather than doing work themselves.
+# They are legitimate members of the module -- after Install-PSModule a host
+# user wants exactly these -- but this image ships no docker client, so
+# dispatching them here can only ever fail. They are hidden from the advertised
+# list and rejected with a message that says where to run them instead, rather
+# than surfacing 'docker not found on PATH' from deep inside a script.
+$hostOnlyCommands = @('Invoke-DocsBuildImage', 'Invoke-PreviewDocs')
+
+$containerCommands = (Get-Command -Module DocsTemplate).Name |
+    Where-Object { $_ -notin $hostOnlyCommands } |
+    Sort-Object
+
+if ($command -in $hostOnlyCommands) {
+    throw (
+        "'$command' drives Docker and cannot run inside this image, which ships " +
+        'no docker client. Run it on the host instead: install the module with ' +
+        "Install-PSModule against this image, then call $command there. " +
+        "Available in the container: $($containerCommands -join ', ')"
+    )
+}
+
 $resolved = Get-Command -Name $command -Module DocsTemplate -ErrorAction SilentlyContinue
 if (-not $resolved) {
-    $available = (Get-Command -Module DocsTemplate).Name -join ', '
-    throw "'$command' is not a command this image exposes. Available: $available"
+    throw "'$command' is not a command this image exposes. Available: $($containerCommands -join ', ')"
 }
 
 # Splatting a literal empty array is not the same as passing no arguments:

@@ -69,7 +69,55 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $specificationPath = Join-Path $repositoryRoot $Specification
-$outputPath = Join-Path $repositoryRoot $Output
+
+function Resolve-ContainedOutputPath {
+    <#
+    .SYNOPSIS
+    Resolves -Output against the repository root and guarantees it stays inside
+    it.
+
+    This matters more here than for the other paths: the resolved directory is
+    deleted with Remove-Item -Recurse -Force before every build, so an -Output
+    of '..' or an absolute path would recursively delete something outside the
+    repository. Read-only inputs like -Specification carry no such risk.
+
+    Mirrors Resolve-ContainedProjectDirectory in setup-docs.ps1: reject rooted
+    paths and '..' segments outright, then canonicalize and re-check
+    containment as an independent second guard, so a separator or encoding
+    trick that slips past the first two still cannot resolve outside the root.
+    #>
+    # AllowEmptyString so an empty -Output reaches the check below and gets a
+    # message naming -Output, rather than PowerShell's binder rejecting it with
+    # a complaint about this function's internal parameter name.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw '-Output must not be empty.'
+    }
+
+    if ([IO.Path]::IsPathRooted($Value)) {
+        throw "-Output must be a path relative to the repository, not rooted: '$Value'."
+    }
+
+    if (@($Value -split '[\\/]') -contains '..') {
+        throw "-Output must not contain '..' segments: '$Value'."
+    }
+
+    $resolved = [IO.Path]::GetFullPath((Join-Path $repositoryRoot $Value))
+    $normalizedRoot = $repositoryRoot.TrimEnd('\', '/')
+
+    if ($resolved -eq $normalizedRoot) {
+        throw '-Output must not be the repository root itself; it is deleted before each build.'
+    }
+
+    if (-not $resolved.StartsWith($normalizedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "-Output resolves outside the repository: '$Value' -> '$resolved'."
+    }
+
+    return $resolved
+}
+
+$outputPath = Resolve-ContainedOutputPath -Value $Output
 
 if (-not (Test-Path -LiteralPath $specificationPath -PathType Leaf)) {
     throw "Specification not found at '$specificationPath'."
