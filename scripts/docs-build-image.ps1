@@ -18,8 +18,8 @@
 
 .PARAMETER AdditionalTags
     Extra tags to apply to the same image. Each is also pushed when -Push is
-    set. The release workflow publishes :latest alone and passes nothing here;
-    the parameter remains for one-off builds that need a second reference.
+    set. The release workflow passes an immutable GitVersion tag here, computed
+    from GitVersion.yml, alongside the :latest that -Tag defaults to.
 
 .PARAMETER Context
     Docker build context. Defaults to the repository root (the parent of this
