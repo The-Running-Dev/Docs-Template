@@ -8,7 +8,7 @@
 #                  of `docker run <image>` with no command.
 #   pwsh / sh      Exec directly. Lets `docker run -it <image> pwsh` still
 #                  drop into a plain shell for inspection, same as before an
-#                  ENTRYPOINT existed.
+#                  ENTRYPOINT existed. Not bash: Alpine does not ship it.
 #   anything else  Treated as a module command name (e.g. Invoke-SetupDocs)
 #                  and handed to dispatch.ps1, which imports the
 #                  DocsTemplate module and calls it with the remaining
@@ -65,7 +65,12 @@ NODOCS
 fi
 
 case "$1" in
-    pwsh | sh | bash)
+    # bash is deliberately absent: the image is Alpine-based and does not
+    # install it, so accepting it here would exec a binary that is not there
+    # and fail with "exec: bash: not found". Left out, it falls through to the
+    # dispatcher and gets the clear "not a command this image exposes" error
+    # instead. Add bash to the Dockerfile's apk list before adding it here.
+    pwsh | sh)
         exec "$@"
         ;;
     *)

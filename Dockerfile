@@ -98,8 +98,8 @@ ENV HOME=/tmp
 EXPOSE 3000
 
 # entrypoint.sh dispatches on argv[0]: no args (or 'dev') runs start:docker,
-# preserving today's bare `docker run <image>` behavior; 'pwsh'/'sh'/'bash'
-# exec directly; anything else is looked up as an exported DocsTemplate
+# preserving today's bare `docker run <image>` behavior; 'pwsh'/'sh' exec
+# directly; anything else is looked up as an exported DocsTemplate
 # command. Invoked via `/bin/sh <path>` rather than relying on the file's own
 # execute bit or shebang, so a COPY that lands without the execute bit still
 # runs.
