@@ -131,10 +131,12 @@ of this site's own build. They exist to be copied.
 `dockerignore` is stored without its leading dot so it is neither hidden in the
 template nor applied to the template's own build context.
 
-`docs-ci.yml` and `docs-deploy.yml` are not copied by the installer directly. It
-delegates to `scripts/setup-docs-workflow.ps1`, which already owned that job and
-reports those two files itself — which is why the installer's summary notes them
-separately rather than counting them.
+`docs-ci.yml` and `docs-deploy.yml` are written by the installer itself. Neither
+is a plain copy: the gate job is excised from `docs-ci.yml` when `-SkipGate` is
+passed, and `-BaseImage` is substituted into the container image of both, so a
+file-copy step could not produce them. Any workflow file an earlier version
+installed and this one no longer uses — `docs.yml`, `docs-quality.yml` — is
+removed on the next run, since leaving it behind breaks the two that remain.
 
 ### Per-project rules
 

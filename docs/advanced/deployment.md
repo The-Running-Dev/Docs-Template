@@ -36,7 +36,7 @@ The `deploy` job then publishes the built site to GitHub Pages on push or manual
 The same release workflow publishes the template container image to GitHub Container Registry.
 
 - Image: `ghcr.io/the-running-dev/docs-template`
-- On push or manual runs, the build job logs in to GHCR and runs `scripts/docs-build-image.ps1` to build the image from the root `Dockerfile` and push both `:latest` and a date-based `:YYYY.MM.DD` tag.
+- On push or manual runs, the build job logs in to GHCR and runs `scripts/docs-build-image.ps1` to build the image from the root `Dockerfile` and push it as `:latest`.
 - On pull requests the image is built for validation only (no login, no push).
 - The workflow grants `packages: write` so the build job can push the image.
 

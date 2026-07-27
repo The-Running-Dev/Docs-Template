@@ -19,6 +19,13 @@
 - `pnpm serve`: Preview a production build.
 - `pnpm test` / `pnpm test:run` / `pnpm test:ui`: Vitest (CLI/UI); `pnpm test:coverage` for reports.
 - `pnpm lint` / `pnpm lint:fix`, `pnpm format` / `pnpm format:check`, `pnpm quality` for full checks.
+- `./scripts/build-psmodule.ps1`: generate the `DocsTemplate` PowerShell module
+  from `PSModule/PSModule.psd1` into `artifacts/PSModule`. The root `Dockerfile`
+  copies that to `/PSModule`, so it must run before `docker build`; all three
+  workflows run it. It uses a local SubZeroDev.PSGenerator when there is one and
+  otherwise falls back to the published generator image, which is what CI does —
+  no setup required either way. Never edit the output; fix the specification and
+  re-run.
 
 ## Coding Style & Naming Conventions
 
@@ -58,9 +65,71 @@
 
 ## Template Bootstrap
 
-- To initialize another copy of this template, copy the repo to a new folder, run `pnpm install`, then run `.\\scripts\\setup-docs.ps1` once to install the docs overlay, local preview, and documentation gate.
-- For the usual development flow, run `.\\template-build.ps1` from the project root; it installs dependencies, runs pre-build, and starts the dev server.
-- If you only need the standard manual path, run `pnpm run prebuild:prod` followed by `pnpm start`.
+Two different audiences read this section: a project _consuming_ this template
+(install the docs system into an unrelated repository), and someone
+_developing this repository itself_ (running its own Docusaurus site). The
+commands are not interchangeable.
+
+### Consuming this template: install the docs system (container, recommended)
+
+```bash
+docker run --rm \
+  -v "$PWD:/work" -w /work \
+  --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest \
+  Invoke-SetupDocs -ProjectDir /work -Title 'My Project' -SiteUrl 'https://docs.example.com/'
+```
+
+- **Bind-mount the whole project, including `.git`.** The documentation gate
+  finds the project root by walking up for a `.git` marker and fails if the
+  mount doesn't include it.
+- **`--user "$(id -u):$(id -g)"`** matters on Linux hosts: without it, the
+  container writes files as root, and the host repository ends up with
+  root-owned files. The container's own processes still run as root either
+  way; this only affects the UID stamped on what gets written.
+- **`Invoke-SetupDocs` takes the same parameters as `scripts/setup-docs.ps1`**:
+  `-ProjectDir` (default `.`), `-Title`, `-Description`, `-SiteUrl`,
+  `-ScriptDir` (default `build`), `-ConfigDir` (default `.config`),
+  `-NoHomepage`, `-SkipWorkflow`, `-SkipGate`, `-Overwrite`. In practice
+  `-Title` and `-SiteUrl` are the ones worth setting explicitly; everything
+  else has a sane default.
+- **`-ProjectDir` must point at the mount.** It defaults to `.`, and the
+  image's `WORKDIR` is `/template`. Omit both the mount and `-ProjectDir` and
+  the command refuses to run rather than installing into the template image
+  itself.
+- **A bare `docker run <image>` runs the dev server**, but only serves anything
+  when a project's documentation is mounted over `/template/docs`. The image
+  deliberately ships without a `docs/` tree (the `Dockerfile` deletes it, so
+  downstream projects don't inherit sample content), so with no mount there is
+  nothing to render. The entrypoint checks for this first and exits with the
+  mount commands to use, rather than letting Docusaurus fail with a stack trace
+  ending in `The docs folder does not exist for version "current"` — which it
+  did previously, and which also left the container running, because
+  `start:docker` runs the server under `concurrently` alongside a config
+  watcher that outlives it. `scripts/preview-docs.ps1` (or the `docs.ps1`
+  installed into a consumer project) sets those mounts up for you and supports
+  `-Live` for hot reload.
+- **`docker run <image> pwsh`** (or `sh` / `bash`) drops into a shell directly,
+  same as before an entrypoint existed. Any other first word is looked up as an
+  exported `DocsTemplate` module command; an unrecognized name fails
+  immediately with the list of what the image actually exposes, rather than a
+  generic "command not found."
+
+If you're setting up a project consumer-side, `planning/AGENTS-docs-section.md`
+is the equivalent section written to be copied _into_ that project's own
+`AGENTS.md` — the two must not contradict each other.
+
+### Consuming this template: from a local checkout instead
+
+- `pnpm install`, then `.\scripts\setup-docs.ps1` -- accepts the same
+  parameters as `Invoke-SetupDocs` above; run
+  `Get-Help ./scripts/setup-docs.ps1 -Full` for the complete reference.
+
+### Developing this repository's own site
+
+- `.\template-build.ps1` from the project root installs dependencies, runs
+  pre-build, and starts the dev server in one step.
+- Or manually: `pnpm run prebuild:prod` followed by `pnpm start`.
 
 ## Theme Swizzles: Decorate vs Replace
 
@@ -106,3 +175,11 @@ Anything under `src/` is inherited by every site built from it.
 - In Projects tests, mock `localStorage` explicitly and keep the mocked `useAuth.refresh` function identity stable to avoid repeated fetch effects.
 - `useAdminProjects.bulkDelete` should stay parallel and aggregate delete failures instead of failing fast.
 - `useAuthenticatedFetch` should normalize headers with `Headers` rather than object spread so plain objects, tuples, and `Headers` inputs all keep their values.
+- A GitHub Actions workflow can never grant a job more permission than the
+  workflow itself declares. `docs-ci.yml` (gate + build, read-only) and
+  `docs-deploy.yml` (`pages: write`, `id-token: write`) stay two files for this
+  reason: folding deploy into a single workflow would hand the gate and build
+  jobs credentials they never use.
+- A required status check that never runs leaves a pull request permanently
+  blocked. `docs-ci.yml`'s triggers carry no `paths:` filter for this reason —
+  the saving on a skipped run is not worth a check that silently never reports.

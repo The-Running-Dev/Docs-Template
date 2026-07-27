@@ -1,9 +1,21 @@
 name: Docs CI
 
-# Verify the documentation builds. Reusable and manually runnable; the caller's
-# main workflow decides when to call it. No push/PR triggers.
+# Everything documentation needs except deploy: check the authored Markdown,
+# then build the site to prove it still builds. No path filters -- both jobs
+# are meant to be required status checks, and a required check that never runs
+# leaves a pull request permanently blocked.
+#
+# The gate and the build are not the same check. Docusaurus fails on unresolved
+# routes inside the site; the gate covers what the site build never sees --
+# README.md, which is not part of the site at all, plus relative link targets,
+# heading anchors, product-name casing, and drift between a generated file and
+# its source.
+
 "on":
-    workflow_call:
+    pull_request:
+    push:
+        branches:
+            - main
     workflow_dispatch:
 
 permissions:
@@ -15,11 +27,30 @@ defaults:
         shell: pwsh
 
 jobs:
+    # --- DocumentationGate:start ---
+    # The start/end markers are load-bearing: setup-docs.ps1 locates this exact
+    # block by them to remove the job entirely when -SkipGate is passed. Keep
+    # them if you edit this job by hand.
+    documentation:
+        name: Documentation links and terminology
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v7
+
+            - name: Validate Markdown links, terminology, and generated files
+              run: ./build/Test-Documentation.ps1
+    # --- DocumentationGate:end ---
+
     verify:
         name: Verify Documentation Build
+        # Skipped on push to main: docs-deploy.yml builds and deploys there, so
+        # building again here would duplicate work every deploy performs anyway.
+        if: github.event_name != 'push'
         runs-on: ubuntu-latest
-        # Run every step inside the published base image, which already carries
-        # the template under /template with node_modules and PowerShell installed.
+        # Run inside the published base image, which already carries the
+        # template under /template with node_modules and PowerShell installed.
         container:
             image: ghcr.io/the-running-dev/docs-template:latest
             credentials:
@@ -27,20 +58,18 @@ jobs:
                 password: ${{ secrets.REGISTRY_TOKEN || github.token }}
 
         steps:
-            - name: Check out Repository
-              uses: actions/checkout@v6
+            - name: Check out repository
+              uses: actions/checkout@v7
 
-            - name: Build Documentation (verify)
+            - name: Build documentation
               run: /template/scripts/docs-build.ps1 -SourceDocs ./docs -OutputPath artifacts/docs
 
             # Run the same archiving step docs-deploy.yml uses, so the deploy
             # path is covered before merge rather than after it. This action
             # tars the site with `tar --hard-dereference`, which fails outright
-            # on an image without GNU tar; because deploy only runs on push to
-            # main, such a break used to surface only once it was too late to
-            # block. Uploading an artifact publishes nothing — deploy-pages
-            # does that, and it stays out of this workflow.
-            - name: Archive Pages Artifact (verify deploy path)
-              uses: actions/upload-pages-artifact@v4
+            # on an image without GNU tar. Uploading an artifact publishes
+            # nothing; deploy-pages does that, and it is not in this job.
+            - name: Archive Pages artifact (verify deploy path)
+              uses: actions/upload-pages-artifact@v5
               with:
                   path: artifacts/docs

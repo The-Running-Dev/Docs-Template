@@ -84,6 +84,13 @@ out/
 artifacts/
 **/artifacts/
 
+# ...except the generated PowerShell module, which the image embeds at
+# /PSModule for Install-PSModule to retrieve. It is build output like the rest
+# of artifacts/, so it is not committed, but it has to reach the build context.
+# scripts/build-psmodule.ps1 produces it; run that before docker build.
+!artifacts/PSModule
+!artifacts/PSModule/**
+
 # Coverage and testing
 coverage/
 **/coverage/

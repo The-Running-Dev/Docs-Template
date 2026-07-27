@@ -115,16 +115,15 @@
 # ====================================================================
 #
 # Image and site publication run from the main branch release workflow.
-# The image is tagged :latest and a date-based :YYYY.MM.DD version computed in
-# the publish step; both are pushed by scripts/docs-build-image.ps1.
+# The image is published as :latest only, by scripts/docs-build-image.ps1.
 #
 # ====================================================================
 # OUTPUTS & ARTIFACTS
 # ====================================================================
 #
 # This workflow produces:
-# - Docker Image: ghcr.io/the-running-dev/docs-template:latest and :YYYY.MM.DD
-# - Registry Tags: :latest plus a date-based version, pushed by the publish step
+# - Docker Image: ghcr.io/the-running-dev/docs-template:latest
+# - Registry Tags: :latest, pushed by the publish step
 # - GitHub Pages deployment for the static documentation site
 # - One release path for both site and container outputs
 #
@@ -226,6 +225,14 @@ jobs:
       # STEP 5: VERSION, BUILD & PUBLISH CONTAINER IMAGE
       # ================================================================
       # On pull requests, validate the image builds (no login, no push).
+      # Must precede every image build: the Dockerfile copies artifacts/PSModule
+      # to /PSModule, so without this the build fails on a missing directory.
+      # Generated rather than committed, so the module can never drift from the
+      # specification it is built from.
+      - name: Generate PowerShell Module
+        shell: pwsh
+        run: ./scripts/build-psmodule.ps1
+
       - name: Build docs-template Image (validate, no push)
         if: github.event_name == 'pull_request'
         shell: pwsh
@@ -239,17 +246,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
-      - name: Version, Build & Push docs-template Image
+      - name: Build & Push docs-template Image
         id: publish
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
-          $version = Get-Date -Format 'yyyy.MM.dd'
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Publishing docs-template image :latest and :$version"
-          ./scripts/docs-build-image.ps1 `
-            -AdditionalTags "ghcr.io/the-running-dev/docs-template:$version" `
-            -Push
+          Write-Host 'Publishing docs-template image :latest'
+          ./scripts/docs-build-image.ps1 -Push
 
       # ================================================================
       # STEP 6: UPLOAD PAGES ARTIFACT

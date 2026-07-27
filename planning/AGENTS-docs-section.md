@@ -6,28 +6,53 @@ published base image and overlays `docs/` on top of it, so `docker build` pulls
 everything needed. There is no Node install to maintain and no template
 checkout to keep in sync.
 
-Installed by `Install-DocsSystem.ps1`. Re-run it with `-Overwrite` against a
-newer image to pick up upstream fixes.
+Installed by `Invoke-SetupDocs`, either from the published image:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest \
+  Invoke-SetupDocs -ProjectDir /work -Title 'My Project'
+```
+
+or as `scripts/setup-docs.ps1` from a template checkout. Re-run either with
+`-Overwrite` to pick up upstream fixes. Pass `-BaseImage` to pin a specific
+image tag instead of tracking `:latest`.
 
 ## Layout
 
-| Path                              | Notes                                                    |
-| --------------------------------- | -------------------------------------------------------- |
-| `docs/docs/**`                     | Authored Markdown. Add pages here.                        |
-| `docs/docs/index.md`               | **Generated from `README.md`. Do not edit.**              |
-| `docs/docusaurus.config.ts`        | Site title, URL, navbar, broken-link policy.              |
-| `docs/sidebar.ts`                  | Sidebar structure. Note the singular filename.            |
-| `docs/Dockerfile`                  | `FROM` the base image, `COPY . .` to overlay this folder. |
-| `docs/.dockerignore`               | Keeps the build context to the overlay.                   |
-| `docs.ps1`                         | Local preview entry point.                                |
-| `build/ConvertTo-DocumentationHomepage.ps1` | README to homepage generator.                    |
-| `build/Test-Documentation.ps1`     | The documentation gate.                                   |
-| `.config/DocumentationRules.psd1`  | Gate rules: terminology, exclusions, generated-file drift. |
-| `.github/workflows/docs-ci.yml`    | Gate, build, and deploy.                                  |
+| Path                                        | Notes                                                      |
+| ------------------------------------------- | ---------------------------------------------------------- |
+| `docs/docs/**`                              | Authored Markdown. Add pages here.                         |
+| `docs/docs/index.md`                        | **Generated from `README.md`. Do not edit.**               |
+| `docs/docusaurus.config.ts`                 | Site title, URL, navbar, broken-link policy.               |
+| `docs/sidebar.ts`                           | Sidebar structure. Note the singular filename.             |
+| `docs/Dockerfile`                           | `FROM` the base image, `COPY . .` to overlay this folder.  |
+| `docs/.dockerignore`                        | Keeps the build context to the overlay.                    |
+| `docs.ps1`                                  | Local preview entry point.                                 |
+| `build/ConvertTo-DocumentationHomepage.ps1` | README to homepage generator.                              |
+| `build/Test-Documentation.ps1`              | The documentation gate.                                    |
+| `.config/DocumentationRules.psd1`           | Gate rules: terminology, exclusions, generated-file drift. |
+| `.github/workflows/docs-ci.yml`             | Gate and build verification.                               |
+| `.github/workflows/docs-deploy.yml`         | Build and deploy to GitHub Pages.                          |
 
-Documentation is served from the site root (`routeBasePath: '/'`), which is why
-`docs/docs/index.md` is the landing page rather than a separate `src/pages`
-entry.
+Documentation is served under `/docs` by default — the installed
+`docusaurus.config.ts` keeps `routeBasePath: 'docs'`. Two consequences worth
+knowing, because they are easy to trip over:
+
+- **`docs/docs/index.md` is not the site root.** It is the landing page of the
+  documentation section, at `/docs/`. What sits at `/` differs by build path:
+  local preview via `docs.ps1` strips `src/pages`, so `/` has no page at all,
+  while the CI build overlays onto the full template and inherits the
+  template's own landing page there.
+- **The homepage generator rewrites the published site origin to `/`**, which
+  assumes documentation is served from the root. Under `routeBasePath: 'docs'`
+  those rewritten links do not land on the generated homepage.
+
+Setting `routeBasePath: '/'` in `docs/docusaurus.config.ts` makes all of this
+coherent — the generated homepage becomes the site root and the origin rewrite
+resolves — at the cost of moving every page's URL. The installer does not do it
+for you, because for a project already serving from `/docs` that is a breaking
+change rather than a fix.
 
 ## The homepage is generated — never edit it by hand
 
@@ -89,17 +114,19 @@ wherever it is installed, but the project must be a git repository.
 
 ### What it checks
 
-| Rule             | Severity | Meaning                                                     |
-| ---------------- | -------- | ----------------------------------------------------------- |
+| Rule             | Severity | Meaning                                                      |
+| ---------------- | -------- | ------------------------------------------------------------ |
 | `MarkdownLink`   | Error    | Relative link target does not exist on disk.                 |
 | `MarkdownAnchor` | Error    | `#fragment` matches no heading in the target document.       |
 | `GeneratedFile`  | Error    | A generated file no longer matches its source.               |
 | `Terminology`    | Warning  | Product name cased inconsistently, e.g. `Github` → `GitHub`. |
 
-Errors always fail the run. Warnings are printed but do not block locally —
-**CI passes `-TreatWarningsAsErrors`, so nothing merges with an outstanding
-finding of any severity.** Treat a local warning as something to fix now, not
-later.
+Errors always fail the run, locally and in CI. **Warnings are reported but do
+not fail anything**, because the installed `docs-ci.yml` invokes the gate
+without `-TreatWarningsAsErrors`. If you want a terminology slip to block a
+merge, add that switch to the gate step in `.github/workflows/docs-ci.yml`;
+until then, treat a warning as something to fix by habit rather than something
+CI will catch for you.
 
 External `http(s)`, `mailto`, and site-absolute (`/...`) links are deliberately
 out of scope. The gate makes no network calls, and Docusaurus' own broken-link
@@ -146,13 +173,18 @@ regenerated on every run unless `-NoHomepage` is passed.
 
 ## CI
 
-One workflow, `.github/workflows/docs-ci.yml`, with three jobs:
+Two workflows. They are split rather than combined because a job can never
+hold more permission than the workflow declaring it, so folding deploy in would
+hand the gate and build jobs the `pages`/`id-token` grant they never use.
 
-| Job | Runs on | Does |
-|---|---|---|
-| `documentation` | every trigger | The gate, with `-TreatWarningsAsErrors`. Pure PowerShell, no container. |
-| `verify` | pull requests | Builds the site in the base image and archives the Pages artifact. |
-| `deploy` | push to `main` | Builds and deploys to GitHub Pages. |
+| Workflow          | Job             | Runs on        | Does                                                               |
+| ----------------- | --------------- | -------------- | ------------------------------------------------------------------ |
+| `docs-ci.yml`     | `documentation` | every trigger  | The gate. Pure PowerShell, no container. Read-only permissions.    |
+| `docs-ci.yml`     | `verify`        | pull requests  | Builds the site in the base image and archives the Pages artifact. |
+| `docs-deploy.yml` | `deploy`        | push to `main` | Builds and deploys to GitHub Pages. Holds `pages`/`id-token`.      |
+
+Neither carries `paths:` filters: these are meant to be required status checks,
+and a required check that never runs leaves a pull request permanently blocked.
 
 The gate and the build are **not** the same check, which is why both exist. The
 build catches what Docusaurus itself rejects — unresolved routes, MDX,

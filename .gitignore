@@ -163,3 +163,10 @@ set-environment.ps1
 static/CNAME
 
 data/index.ts
+
+# Merge and patch leftovers. Git writes *.orig when a conflict is resolved and
+# `patch` writes *.rej for rejected hunks; both are local scratch that has been
+# committed here before -- two *.orig backups sat in planning/ until they were
+# removed -- and neither is ever worth keeping.
+*.orig
+*.rej
