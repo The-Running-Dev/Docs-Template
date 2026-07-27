@@ -128,7 +128,26 @@ they did not write. This makes the root question mandatory rather than
 cosmetic, and it settles it: with `routeBasePath: '/'` the docs root _is_ `/`,
 and the same build reports **zero** broken links.
 
-### Proposal: firm up `routeBasePath`
+### `routeBasePath` — implemented
+
+`-RouteBasePath` defaults to `'/'` and is substituted into the installed config.
+An existing config's value is preserved under `-Overwrite` unless the parameter
+is passed explicitly, so a re-run to pick up upstream fixes cannot move a
+project's URLs. Verified in all four directions:
+
+| Case                                              | Result                  |
+| ------------------------------------------------- | ----------------------- |
+| New install, no parameter                         | `'/'`                   |
+| New install, `-RouteBasePath docs`                | `'docs'`                |
+| Existing `'docs'` + `-Overwrite`                  | stays `'docs'`, says so |
+| Existing `'docs'` + `-Overwrite -RouteBasePath /` | moves to `'/'` — opt-in |
+
+End to end on an image built from these changes: a default install builds with
+**0 broken links, 0 duplicate routes**, one route `/`, and the README as its
+content. The consumer guide documents both shapes and the preserve-on-overwrite
+behaviour.
+
+### Superseded proposal (kept for the reasoning)
 
 Now that the pages are gone, the root is no longer a matter of taste. Measured on
 an image built from these changes:

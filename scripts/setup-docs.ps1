@@ -59,6 +59,24 @@
     Where the gate rules are installed, relative to the project. Defaults to
     '.config'.
 
+.PARAMETER RouteBasePath
+    Where documentation is served, written to routeBasePath in the installed
+    docusaurus.config.ts. Defaults to '/', which serves the docs at the site
+    root.
+
+    That default matters for more than tidiness. The theme's 404 page and the
+    docs navbar both link to '/', so with docs under '/docs' and nothing at the
+    root, Docusaurus reports two broken links the project never wrote -- benign
+    under the shipped onBrokenLinks 'warn', a failed build for anyone who raises
+    it to 'throw'. Serving from the root makes both resolve. It also matches
+    what the homepage generator assumes when it rewrites the published site
+    origin to '/'.
+
+    An existing docusaurus.config.ts is never silently re-pointed: under
+    -Overwrite the value already in the file is preserved unless this parameter
+    is passed explicitly, so a re-run to pick up upstream fixes cannot move a
+    project's URLs.
+
 .PARAMETER BaseImage
     Documentation image the installed files build on. Written to all four
     places an install references it -- docs/Dockerfile's BASE_IMAGE argument,
@@ -110,6 +128,7 @@ param(
     [Parameter()][string]$ScriptDir = 'build',
     [Parameter()][string]$ConfigDir = '.config',
     [Parameter()][string]$BaseImage = 'ghcr.io/the-running-dev/docs-template:latest',
+    [Parameter()][ValidateNotNullOrEmpty()][string]$RouteBasePath = '/',
     [Parameter()][switch]$NoHomepage,
     [Parameter()][switch]$SkipWorkflow,
     [Parameter()][switch]$SkipGate,
@@ -533,13 +552,38 @@ if (-not $WorkflowsOnly) {
     # rejects an empty one, so writing '' would trade one broken build for
     # another.
     #
-    # onBrokenLinks ('warn') and routeBasePath ('docs') are deliberately left at
-    # the template's values. Both are behavioural choices rather than unfilled
-    # placeholders -- flipping routeBasePath to '/' would move every page's URL
-    # for projects already serving from /docs.
+    # onBrokenLinks ('warn') is deliberately left at the template's value: it is
+    # a behavioural choice rather than an unfilled placeholder.
+    #
+    # routeBasePath is substituted, defaulting to '/' -- see the parameter help
+    # for why the root is not merely tidier. What keeps that default safe is the
+    # block below: an existing config's value wins unless -RouteBasePath was
+    # passed, so re-running with -Overwrite to pick up an upstream fix cannot
+    # move a project's URLs.
+    $effectiveRouteBasePath = $RouteBasePath
+    $existingConfig = Join-Path $docsDir 'docusaurus.config.ts'
+
+    if (-not $PSBoundParameters.ContainsKey('RouteBasePath') -and
+        (Test-Path -LiteralPath $existingConfig -PathType Leaf)) {
+
+        $existingMatch = [regex]::Match(
+            (Get-Content -LiteralPath $existingConfig -Raw),
+            "routeBasePath:\s*'([^']*)'")
+
+        if ($existingMatch.Success -and $existingMatch.Groups[1].Value -ne $RouteBasePath) {
+            $effectiveRouteBasePath = $existingMatch.Groups[1].Value
+            Write-Host (
+                "[SETUP] Keeping this project's routeBasePath '$effectiveRouteBasePath' " +
+                "rather than the default '$RouteBasePath'; pass -RouteBasePath to change it."
+            ) -ForegroundColor DarkGray
+        }
+    }
+
     $configReplacements = @{
         "title: ''"   = "title: '$(ConvertTo-JavaScriptSingleQuoted -Value $Title)'"
         "tagline: ''" = "tagline: '$(ConvertTo-JavaScriptSingleQuoted -Value $Description)'"
+        "routeBasePath: 'docs'" =
+            "routeBasePath: '$(ConvertTo-JavaScriptSingleQuoted -Value $effectiveRouteBasePath)'"
     }
 
     if (-not [string]::IsNullOrWhiteSpace($SiteUrl)) {
