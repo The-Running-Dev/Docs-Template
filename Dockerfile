@@ -98,10 +98,10 @@ EXPOSE 3000
 # execute bit or shebang, so a COPY that lands without the execute bit still
 # runs.
 #
-# 'dev' is preserved for compatibility, not because it works unaided: the docs
-# tree is deleted above, so start:docker exits with "The docs folder does not
-# exist" unless something is mounted over /template/docs. scripts/preview-docs.ps1
-# is what sets those mounts up. That was equally true before this ENTRYPOINT
-# existed -- CMD ran the same command -- so nothing here regresses it.
+# 'dev' needs documentation mounted over /template/docs to serve anything, since
+# the docs tree is deleted above. entrypoint.sh checks for that before starting
+# and exits with the mount commands to use, instead of letting Docusaurus fail
+# with a stack trace and leaving the container running behind it.
+# scripts/preview-docs.ps1 is what sets those mounts up.
 ENTRYPOINT ["/bin/sh", "/template/scripts/entrypoint.sh"]
 CMD ["dev"]

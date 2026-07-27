@@ -90,18 +90,23 @@ docker run --rm \
   image's `WORKDIR` is `/template`. Omit both the mount and `-ProjectDir` and
   the command refuses to run rather than installing into the template image
   itself.
-- **A bare `docker run <image>` with no command is unchanged**: it still runs
-  `pnpm run start:docker`. Note that this has never been useful on its own —
-  the image deliberately ships without a `docs/` tree (the `Dockerfile`
-  deletes it, so downstream projects don't inherit sample content), so the dev
-  server exits with `The docs folder does not exist for version "current"`
-  unless something is mounted over `/template/docs`. Use `scripts/preview-docs.ps1`
-  (or the `docs.ps1` installed into a consumer project), which sets up the
-  mounts. `docker run <image> pwsh` (or `sh` / `bash`) drops into a shell
-  directly, same as before an entrypoint existed. Any other first word is
-  looked up as an exported `DocusaurusTemplate` module command; an
-  unrecognized name fails immediately with the list of what the image actually
-  exposes, rather than a generic "command not found."
+- **A bare `docker run <image>` runs the dev server**, but only serves anything
+  when a project's documentation is mounted over `/template/docs`. The image
+  deliberately ships without a `docs/` tree (the `Dockerfile` deletes it, so
+  downstream projects don't inherit sample content), so with no mount there is
+  nothing to render. The entrypoint checks for this first and exits with the
+  mount commands to use, rather than letting Docusaurus fail with a stack trace
+  ending in `The docs folder does not exist for version "current"` — which it
+  did previously, and which also left the container running, because
+  `start:docker` runs the server under `concurrently` alongside a config
+  watcher that outlives it. `scripts/preview-docs.ps1` (or the `docs.ps1`
+  installed into a consumer project) sets those mounts up for you and supports
+  `-Live` for hot reload.
+- **`docker run <image> pwsh`** (or `sh` / `bash`) drops into a shell directly,
+  same as before an entrypoint existed. Any other first word is looked up as an
+  exported `DocusaurusTemplate` module command; an unrecognized name fails
+  immediately with the list of what the image actually exposes, rather than a
+  generic "command not found."
 
 If you're setting up a project consumer-side, `planning/AGENTS-docs-section.md`
 is the equivalent section written to be copied _into_ that project's own

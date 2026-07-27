@@ -292,19 +292,40 @@ image in Phase 0):
       dispatcher — confirmed `[SETUP] Replaced (11)` on a second run.
 - [x] `Invoke-DocsBuild` runs the actual Docusaurus build inside the
       container and produces `artifacts/docs/index.html`.
-- [x] A bare `docker run <image>` (and explicit `dev`) still runs
-      `start:docker`; `pwsh`/`sh`/`bash` still drop into a shell.
-      **Correction to an earlier claim in this file**: that was first recorded
-      as "still starts the dev server", based on seeing the prestart/prebuild
-      output scroll past. Running the published image bare shows the dev
-      server then exiting, because the docs folder for version "current" does
-      not exist. The `Dockerfile` deletes `/template/docs` on purpose so
-      consumers don't inherit sample content, so `start:docker` only works
-      with something mounted over it (which `scripts/preview-docs.ps1` does).
-      This is pre-existing on `main` and unchanged by Phase 2 — `CMD` ran the
-      same command before the `ENTRYPOINT` existed — but the phrasing
-      overstated it. `AGENTS.md` and the `Dockerfile` comment now say so
-      explicitly rather than implying a bare run is useful.
+- [x] A bare `docker run <image>` (and explicit `dev`) runs the dev server;
+      `pwsh`/`sh`/`bash` still drop into a shell. See the dev-path preflight
+      below — this was first recorded here as "still starts the dev server",
+      which was wrong, and then documented as a known wart, which was not good
+      enough either.
+
+### Dev-server preflight — reported by the user, fixed
+
+A bare `docker run <image>` failed with a fifteen-frame Docusaurus stack trace
+ending in `The docs folder does not exist for version "current"`. The image
+deletes `/template/docs` on purpose so consumers do not inherit sample content,
+so there is nothing to serve until a project's documentation is mounted over
+it.
+
+Two things made this worse than a bad error message:
+
+- The container **stayed up afterwards**. `start:docker` runs the dev server
+  under `concurrently` alongside a config watcher, and the watcher outlives the
+  failed server, so a completely broken run still looks healthy to `docker ps`.
+- Nothing in the output said what to actually do.
+
+Pre-existing on `main`, and initially documented rather than fixed. That was
+the wrong call: the image knows it has no documentation, so it can say so.
+
+- [x] `entrypoint.sh` checks the docs directory before starting the dev server
+      and exits non-zero with the mount commands to use, covering all three
+      real intents — preview, build, and install.
+- [x] Scoped to the dev path only. `pwsh`/`sh`/`bash` passthrough, module
+      command dispatch, unknown-command errors, and `Invoke-SetupDocs` /
+      `Invoke-DocsBuild` are all unaffected — verified individually.
+- [x] Verified the recommended preview command actually works rather than just
+      reading plausibly: mounting a project's `docs/docs`,
+      `docusaurus.config.ts`, and `sidebar.ts` starts the server, which returns
+      HTTP 200 and the project's own `<title>`.
 - [x] An unrecognized command name fails immediately with the list of what
       the image actually exposes (`Invoke-DocsBuild, Invoke-SetupDocs`).
 - [x] The `/template` guard fires on a bare `Invoke-SetupDocs` with no mount
