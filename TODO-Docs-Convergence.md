@@ -132,56 +132,118 @@ real `docker run` build, not just by reading:
 Two blocking facts: the image has **no `ENTRYPOINT`** (`CMD` is the dev server),
 and `PSModule/PSModule.psd1` is a *generator input* for
 `SubZeroDev.ContainerPSGenerator` — `Id`/`Commands`/`SourcePath`, no
-`RootModule`, no `FunctionsToExport`. It cannot be imported. Both must be built.
+`RootModule`, no `FunctionsToExport`. It cannot be imported. Both were built,
+separately, as planned.
 
-- [ ] Add `scripts/entrypoint.sh`: no arguments execs the dev server (preserving
-      today's `CMD` contract); `pwsh`/`sh` exec directly; anything else is
-      treated as a command name.
-- [ ] Have the entrypoint import the module before dispatching, so
-      `Invoke-SetupDocs` is callable directly.
-- [ ] Write a hand-authored `DocusaurusTemplate.psd1` + `.psm1` pair wrapping
-      each script as a thin function, installed to a `$PSModulePath` location.
-      Keep it separate from the generator manifest; one file cannot serve both
-      roles.
-- [ ] `Dockerfile`: add
-      `ENTRYPOINT ["/template/scripts/entrypoint.sh"]` and reduce `CMD` to the
-      dev-server arguments.
-- [ ] **Guard `/template`.** `-ProjectDir` defaults to `'.'` and `WORKDIR` is
-      `/template`, so a bare `docker run image Invoke-SetupDocs` would install
-      the docs system into the template itself. Refuse any target resolving
-      inside `/template` and require an explicit mount.
-- [ ] Handle the `.git` requirement: the gate finds the project root by walking
-      up for a `.git` marker, so the bind mount must include it.
-- [ ] Document the `--user` invocation — a root container writes root-owned
-      files onto Linux hosts.
+- [x] Added `scripts/entrypoint.sh`: no arguments (or `dev`) execs the dev
+      server, preserving today's `CMD` contract; `pwsh`/`sh`/`bash` exec
+      directly; anything else is dispatched as a command name via
+      `scripts/dispatch.ps1`.
+- [x] `dispatch.ps1` imports `PowerShell/DocusaurusTemplate/DocusaurusTemplate.psd1`
+      and calls the named exported command with the remaining arguments.
+- [x] Wrote a hand-authored `PowerShell/DocusaurusTemplate/` module —
+      `DocusaurusTemplate.psd1` + `.psm1` — separate from
+      `PSModule/PSModule.psd1`, exporting `Invoke-SetupDocs` and
+      `Invoke-DocsBuild` with parameter lists mirroring `setup-docs.ps1` and
+      `docs-build.ps1` in full.
+- [x] `Dockerfile`: `ENTRYPOINT ["/bin/sh", "/template/scripts/entrypoint.sh"]`,
+      `CMD ["dev"]`, and `ENV PSModulePath="/template/PowerShell:${PSModulePath}"`
+      so the module also auto-loads in a plain interactive
+      `docker run -it <image> pwsh` session, not only through the dispatcher.
+- [x] **Guard `/template`** — `Assert-NotTemplateDirectory` in
+      `DocusaurusTemplate.psm1` resolves `-ProjectDir` before delegating and
+      throws if it lands on `/template` or under it.
+- [x] `.git` requirement and `--user` are documented (see below); neither
+      needed a code change — `Test-Documentation.ps1` already throws a clear
+      error when no `.git` is found.
+- [x] Added `.gitattributes` (`*.sh text eol=lf`) — this is the repository's
+      first shell script, and `AGENTS.md`'s own lessons-learned section
+      already documents an `autocrlf` trap that hit generated docs output the
+      same way.
+
+### Scripts deliberately NOT wrapped as container commands
+
+`scripts/docs-build-image.ps1` and `scripts/preview-docs.ps1` both invoke
+`docker` themselves — they build/run *this same image* from the host side.
+Wrapping them as in-container commands would need a Docker socket and CLI the
+image does not have, the identical docker-in-docker problem flagged against
+`planning/Install-DocsSystem.ps1`'s payload acquisition in Phase 0. Only
+`setup-docs.ps1` (pure file installer) and `docs-build.ps1` (already runs
+inside this image via `docs-ci.yml`/`docs-deploy.yml`) are genuinely
+container-side.
+
+### Two real PowerShell bugs found and fixed during verification
+
+Both are argument-forwarding pitfalls with no compiler or linter to catch
+them; recorded here because the pattern (accept a command name + remaining
+args, forward to a resolved command) will look reusable to a future editor.
+
+1. **Splatting `@array` on a `[string[]]` captured via
+   `ValueFromRemainingArguments` binds every element positionally, not by
+   name.** `-ProjectDir /work -Title Foo` splatted this way lands `ProjectDir
+   = '-ProjectDir'`, `Title = '/work'` — confirmed by reproduction outside
+   Docker before touching the container at all. Fixed by dropping the formal
+   `param()` block entirely and slicing the script's own automatic `$args`
+   instead (`$args[0]`, `$args[1..($args.Count-1)]`) — that shape reliably
+   re-parses flag names on re-splat; a freshly constructed array with
+   identical string content does not.
+2. **Splatting a literal empty array is not the same as passing no
+   arguments.** `& $resolved @()` bound every optional parameter to an empty
+   string instead of its default; `& $resolved` with no splat correctly left
+   defaults in place. Fixed by branching: splat only when `$rest.Count -gt 0`,
+   call with no splat otherwise.
+
+A third, smaller trap surfaced in the same file: `$rest = if (cond) { $x }
+else { @() }` collapses the `@()` branch to `$null` on assignment (empty
+pipeline output, not an empty array), which then throws under
+`Set-StrictMode` the moment `.Count` is accessed. Fixed by a plain `$rest =
+@()` assignment with a conditional overwrite, avoiding the collapsing
+expression form.
 
 ### Usage instructions in the agent file
 
-- [ ] Rewrite the **Template Bootstrap** section of `AGENTS.md` (currently
-      `AGENTS.md:59-63`). It tells readers to copy the repo and run
-      `.\scripts\setup-docs.ps1`, which is incomplete once the container path
-      exists.
-- [ ] Document the canonical invocation, including the bind mount, `.git`
-      requirement, and `--user`:
-      `docker run --rm -v "$PWD:/work" <image> Invoke-SetupDocs -ProjectDir /work`
-- [ ] State plainly that a bare `docker run` still starts the dev server, and
-      what each other entrypoint mode does.
-- [ ] Separate **using** the template (consumer) from **developing** it
-      (this repo); today's bootstrap section blurs the two.
-- [ ] List every parameter `Invoke-SetupDocs` accepts once Phase 3 exposes them,
-      and note which are required in practice (`-Title`, `-SiteUrl`).
-- [ ] Cross-reference the consumer-facing
-      `planning/AGENTS-docs-section.md`, which is the section shipped *into*
-      consumer projects and must not contradict this one.
+- [x] Rewrote the **Template Bootstrap** section of `AGENTS.md`, splitting it
+      into three: consuming the template via the container (recommended, with
+      the full `docker run` invocation, the `.git`/mount and `--user` notes,
+      and the complete `Invoke-SetupDocs` parameter list), consuming it from a
+      local checkout, and developing this repository's own site — the
+      previous version blurred the three into one paragraph.
+- [x] Cross-referenced `planning/AGENTS-docs-section.md` — noted as the
+      consumer-facing equivalent that must not contradict this one. Not
+      corrected against observed behavior yet; that is explicitly Phase 4's
+      job, and the file still describes the superseded
+      `planning/Install-DocsSystem.ps1`.
 
-Acceptance criteria:
+Acceptance criteria — all verified against the real published image via
+`docker run`, bind-mounting the new files over `/template` rather than a full
+image rebuild (the payload files were already proven byte-identical to the
+image in Phase 0):
 
-- `docker run --rm -v <scratch>:/work <image> Invoke-SetupDocs -ProjectDir /work`
-  installs successfully.
-- The result is byte-identical to a host-side install.
-- A bare `docker run` still starts the dev server.
-- The `/template` guard fires when no mount is given.
-- A reader can install the system from `AGENTS.md` alone, without reading a script.
+- [x] `docker run --rm -v <scratch>:/work -w /work <image> Invoke-SetupDocs
+      -ProjectDir /work -Title '...'` installs successfully — verified with
+      Phase 1 and Phase 2 mounted together, producing the same two-workflow,
+      correctly-named output Phase 1 verified alone.
+- [x] `-Overwrite` reaches the real script as a working switch through the
+      dispatcher — confirmed `[SETUP] Replaced (11)` on a second run.
+- [x] `Invoke-DocsBuild` runs the actual Docusaurus build inside the
+      container and produces `artifacts/docs/index.html`.
+- [x] A bare `docker run <image>` (and explicit `dev`) still starts the dev
+      server; `pwsh`/`sh`/`bash` still drop into a shell.
+- [x] An unrecognized command name fails immediately with the list of what
+      the image actually exposes (`Invoke-DocsBuild, Invoke-SetupDocs`).
+- [x] The `/template` guard fires on a bare `Invoke-SetupDocs` with no mount
+      and no `-ProjectDir`, with a clear corrective message rather than a
+      parameter-binding crash.
+- [x] `Test-ModuleManifest` and the PowerShell AST parser both accept every
+      new `.ps1`/`.psd1`/`.psm1` file with zero errors.
+- [ ] Full image rebuild from the modified `Dockerfile` was **not** run in
+      this session (would reinstall PowerShell + all pnpm dependencies from
+      scratch). Everything above was verified by bind-mounting the new files
+      over the currently published image, which carries an identical
+      `/template` tree apart from these additions. Do a real `docker build`
+      before merging, to catch anything specific to build-time layering (e.g.
+      the `ENV PSModulePath` line, or `COPY . ./` picking up the new
+      `PowerShell/` and `scripts/entrypoint.sh` correctly).
 
 ## P3 — Manifest parameter surface
 

@@ -64,9 +64,21 @@ LABEL org.opencontainers.image.source="https://github.com/The-Running-Dev/Docusa
 LABEL org.opencontainers.image.description="Docusaurus documentation template base image"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# Puts PowerShell/DocusaurusTemplate on the module search path, so any pwsh
+# session in this image -- the entrypoint's dispatch, or an interactive
+# `docker run -it <image> pwsh` -- can call Invoke-SetupDocs / Invoke-DocsBuild
+# directly, auto-loading the module on first use with no explicit
+# Import-Module required.
+ENV PSModulePath="/template/PowerShell:${PSModulePath}"
+
 # Expose port 3000
 EXPOSE 3000
 
-# Run the web service on container startup.
-# Use start:docker which binds to 0.0.0.0, making it accessible from outside the container
-CMD ["sh", "-c", "pnpm run start:docker"]
+# entrypoint.sh dispatches on argv[0]: no args (or 'dev') starts the dev
+# server via start:docker, preserving today's bare `docker run <image>`
+# behavior; 'pwsh'/'sh'/'bash' exec directly; anything else is looked up as an
+# exported DocusaurusTemplate command. Invoked via `/bin/sh <path>` rather than
+# relying on the file's own execute bit or shebang, so a COPY that lands
+# without the execute bit still runs.
+ENTRYPOINT ["/bin/sh", "/template/scripts/entrypoint.sh"]
+CMD ["dev"]

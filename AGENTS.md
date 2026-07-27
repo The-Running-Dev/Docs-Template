@@ -58,9 +58,61 @@
 
 ## Template Bootstrap
 
-- To initialize another copy of this template, copy the repo to a new folder, run `pnpm install`, then run `.\\scripts\\setup-docs.ps1` once to install the docs overlay, local preview, and documentation gate.
-- For the usual development flow, run `.\\template-build.ps1` from the project root; it installs dependencies, runs pre-build, and starts the dev server.
-- If you only need the standard manual path, run `pnpm run prebuild:prod` followed by `pnpm start`.
+Two different audiences read this section: a project *consuming* this template
+(install the docs system into an unrelated repository), and someone
+*developing this repository itself* (running its own Docusaurus site). The
+commands are not interchangeable.
+
+### Consuming this template: install the docs system (container, recommended)
+
+```bash
+docker run --rm \
+  -v "$PWD:/work" -w /work \
+  --user "$(id -u):$(id -g)" \
+  ghcr.io/the-running-dev/docs-template:latest \
+  Invoke-SetupDocs -ProjectDir /work -Title 'My Project' -SiteUrl 'https://docs.example.com/'
+```
+
+- **Bind-mount the whole project, including `.git`.** The documentation gate
+  finds the project root by walking up for a `.git` marker and fails if the
+  mount doesn't include it.
+- **`--user "$(id -u):$(id -g)"`** matters on Linux hosts: without it, the
+  container writes files as root, and the host repository ends up with
+  root-owned files. The container's own processes still run as root either
+  way; this only affects the UID stamped on what gets written.
+- **`Invoke-SetupDocs` takes the same parameters as `scripts/setup-docs.ps1`**:
+  `-ProjectDir` (default `.`), `-Title`, `-Description`, `-SiteUrl`,
+  `-ScriptDir` (default `build`), `-ConfigDir` (default `.config`),
+  `-NoHomepage`, `-SkipWorkflow`, `-SkipGate`, `-Overwrite`. In practice
+  `-Title` and `-SiteUrl` are the ones worth setting explicitly; everything
+  else has a sane default.
+- **`-ProjectDir` must point at the mount.** It defaults to `.`, and the
+  image's `WORKDIR` is `/template`. Omit both the mount and `-ProjectDir` and
+  the command refuses to run rather than installing into the template image
+  itself.
+- **A bare `docker run <image>` with no command is unchanged**: it still
+  starts the dev server (`pnpm run start:docker`). `docker run <image> pwsh`
+  (or `sh` / `bash`) drops into a shell directly, same as before an entrypoint
+  existed. Any other first word is looked up as an exported
+  `DocusaurusTemplate` module command; an unrecognized name fails immediately
+  with the list of what the image actually exposes, rather than a generic
+  "command not found."
+
+If you're setting up a project consumer-side, `planning/AGENTS-docs-section.md`
+is the equivalent section written to be copied *into* that project's own
+`AGENTS.md` — the two must not contradict each other.
+
+### Consuming this template: from a local checkout instead
+
+- `pnpm install`, then `.\scripts\setup-docs.ps1` -- accepts the same
+  parameters as `Invoke-SetupDocs` above; run
+  `Get-Help ./scripts/setup-docs.ps1 -Full` for the complete reference.
+
+### Developing this repository's own site
+
+- `.\template-build.ps1` from the project root installs dependencies, runs
+  pre-build, and starts the dev server in one step.
+- Or manually: `pnpm run prebuild:prod` followed by `pnpm start`.
 
 ## Theme Swizzles: Decorate vs Replace
 
