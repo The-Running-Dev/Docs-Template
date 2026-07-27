@@ -1,9 +1,9 @@
 @{
     Id = 'directory.docusaurustemplate'
     GeneratedBy = 'SubZeroDev.PSGenerator'
-    ModuleName = 'DocusaurusTemplate'
+    ModuleName = 'DocsTemplate'
     ModuleVersion = '0.1.0'
-    ContainerImage = 'DocusaurusTemplate'
+    ContainerImage = 'DocsTemplate'
     Commands = @(
         @{
             Id = 'script.scripts.docs-build-image'

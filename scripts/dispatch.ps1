@@ -4,7 +4,7 @@
     execs this for any argv[0] that is not 'dev', 'pwsh', 'sh', or 'bash'.
 
 .DESCRIPTION
-    Imports the DocusaurusTemplate module and calls the exported command named
+    Imports the DocsTemplate module and calls the exported command named
     by the first argument, passing the rest through as its parameters.
 
     Deliberately has no param() block. A formal parameter that collects the
@@ -37,17 +37,17 @@ if ($args.Count -gt 1) { $rest = $args[1..($args.Count - 1)] }
 
 # The generated module, embedded at /PSModule by the Dockerfile. Imported by
 # explicit manifest path rather than by name: the directory is /PSModule while
-# the manifest is DocusaurusTemplate.psd1, and PowerShell only auto-loads a
+# the manifest is DocsTemplate.psd1, and PowerShell only auto-loads a
 # module whose folder name matches its manifest, so no PSModulePath entry would
 # find this one.
 #
 # Overridable for a source checkout, where the module is built to
 # artifacts/PSModule and /PSModule does not exist.
-$moduleManifest = if ($env:DOCUSAURUS_TEMPLATE_MODULE) {
-    $env:DOCUSAURUS_TEMPLATE_MODULE
+$moduleManifest = if ($env:DOCS_TEMPLATE_MODULE) {
+    $env:DOCS_TEMPLATE_MODULE
 }
 else {
-    '/PSModule/DocusaurusTemplate.psd1'
+    '/PSModule/DocsTemplate.psd1'
 }
 
 if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) {
@@ -55,15 +55,15 @@ if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) {
         "The generated PowerShell module was not found at '$moduleManifest'. " +
         'In the published image it is embedded at /PSModule; from a source ' +
         'checkout run ./scripts/build-psmodule.ps1 and point ' +
-        'DOCUSAURUS_TEMPLATE_MODULE at artifacts/PSModule/DocusaurusTemplate.psd1.'
+        'DOCS_TEMPLATE_MODULE at artifacts/PSModule/DocsTemplate.psd1.'
     )
 }
 
 Import-Module $moduleManifest -Force -ErrorAction Stop
 
-$resolved = Get-Command -Name $command -Module DocusaurusTemplate -ErrorAction SilentlyContinue
+$resolved = Get-Command -Name $command -Module DocsTemplate -ErrorAction SilentlyContinue
 if (-not $resolved) {
-    $available = (Get-Command -Module DocusaurusTemplate).Name -join ', '
+    $available = (Get-Command -Module DocsTemplate).Name -join ', '
     throw "'$command' is not a command this image exposes. Available: $available"
 }
 

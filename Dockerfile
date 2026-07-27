@@ -78,12 +78,12 @@ LABEL org.opencontainers.image.licenses="MIT"
 # Where the generated module lives, so an interactive
 # `docker run -it <image> pwsh` can import it without knowing the layout:
 #
-#   Import-Module $env:DOCUSAURUS_TEMPLATE_MODULE
+#   Import-Module $env:DOCS_TEMPLATE_MODULE
 #
 # Not a PSModulePath entry, because PowerShell only auto-loads a module whose
 # directory name matches its manifest, and this one is /PSModule containing
-# DocusaurusTemplate.psd1. entrypoint.sh's dispatcher reads the same variable.
-ENV DOCUSAURUS_TEMPLATE_MODULE="/PSModule/DocusaurusTemplate.psd1"
+# DocsTemplate.psd1. entrypoint.sh's dispatcher reads the same variable.
+ENV DOCS_TEMPLATE_MODULE="/PSModule/DocsTemplate.psd1"
 
 # An arbitrary --user UID (as recommended for Invoke-SetupDocs, so written
 # files aren't root-owned on the host) has no /etc/passwd entry, so $HOME
@@ -99,7 +99,7 @@ EXPOSE 3000
 
 # entrypoint.sh dispatches on argv[0]: no args (or 'dev') runs start:docker,
 # preserving today's bare `docker run <image>` behavior; 'pwsh'/'sh'/'bash'
-# exec directly; anything else is looked up as an exported DocusaurusTemplate
+# exec directly; anything else is looked up as an exported DocsTemplate
 # command. Invoked via `/bin/sh <path>` rather than relying on the file's own
 # execute bit or shebang, so a COPY that lands without the execute bit still
 # runs.

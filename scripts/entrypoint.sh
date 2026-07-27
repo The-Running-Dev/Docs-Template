@@ -11,7 +11,7 @@
 #                  ENTRYPOINT existed.
 #   anything else  Treated as a module command name (e.g. Invoke-SetupDocs)
 #                  and handed to dispatch.ps1, which imports the
-#                  DocusaurusTemplate module and calls it with the remaining
+#                  DocsTemplate module and calls it with the remaining
 #                  arguments as real PowerShell parameters -- not
 #                  string-interpolated into a -Command, which would make
 #                  argument quoting a shell-injection surface.

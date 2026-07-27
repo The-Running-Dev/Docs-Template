@@ -104,7 +104,7 @@ docker run --rm \
   `-Live` for hot reload.
 - **`docker run <image> pwsh`** (or `sh` / `bash`) drops into a shell directly,
   same as before an entrypoint existed. Any other first word is looked up as an
-  exported `DocusaurusTemplate` module command; an unrecognized name fails
+  exported `DocsTemplate` module command; an unrecognized name fails
   immediately with the list of what the image actually exposes, rather than a
   generic "command not found."
 

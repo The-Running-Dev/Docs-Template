@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Generates the DocusaurusTemplate PowerShell module from PSModule/PSModule.psd1.
+    Generates the DocsTemplate PowerShell module from PSModule/PSModule.psd1.
 
 .DESCRIPTION
     Runs SubZeroDev.PSGenerator over the specification in PSModule/PSModule.psd1
@@ -113,7 +113,7 @@ if (Test-Path -LiteralPath $outputPath) {
 
 Build-PSModule -Specification $specificationPath -Output $outputPath -ErrorAction Stop | Out-Null
 
-$manifest = Join-Path $outputPath 'DocusaurusTemplate.psd1'
+$manifest = Join-Path $outputPath 'DocsTemplate.psd1'
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
     throw "Generation reported success but no manifest was produced at '$manifest'."
 }
@@ -121,8 +121,8 @@ if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
 # Importing is the real check: a manifest that exists but does not load would
 # otherwise be found by whoever installs it, not by this build.
 Import-Module $manifest -Force -ErrorAction Stop
-$commands = (Get-Command -Module 'DocusaurusTemplate').Name
-Remove-Module 'DocusaurusTemplate' -Force -ErrorAction SilentlyContinue
+$commands = (Get-Command -Module 'DocsTemplate').Name
+Remove-Module 'DocsTemplate' -Force -ErrorAction SilentlyContinue
 
 Write-Host "[PSMODULE] Generated $($commands.Count) command(s) at '$outputPath':" -ForegroundColor Green
 foreach ($command in $commands) {
