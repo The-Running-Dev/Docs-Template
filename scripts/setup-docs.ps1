@@ -14,16 +14,18 @@
       docs.ps1                       Local preview entry point
       build/                         Homepage generator and documentation gate
       .config/                       Gate rules
-      .github/workflows/             docs.yml, docs-ci.yml, docs-deploy.yml,
-                                     docs-quality.yml
+      .github/workflows/             docs-ci.yml (gate + build), docs-deploy.yml
 
     Idempotent. Without -Overwrite an existing file is left alone and reported
     as skipped, which matters because the workflows are kept byte-identical to
     this template so the command can be re-run to pick up upstream fixes.
 
     Only files this script owns are written. It never edits a workflow or script
-    the project author wrote, which is why the gate ships as its own
-    docs-quality.yml rather than a job appended to an existing test workflow.
+    the project author wrote, which is why the gate and build live in their own
+    docs-ci.yml rather than jobs appended to an existing test workflow. Deploy
+    stays a second file: a workflow can never grant a job more permission than
+    the workflow itself declares, so folding deploy's pages/id-token grant into
+    docs-ci.yml would hand the gate and verify jobs credentials they never use.
 
 .PARAMETER ProjectDir
     Target project directory. Defaults to the current directory.
@@ -57,7 +59,8 @@
     Install no GitHub Actions workflows.
 
 .PARAMETER SkipGate
-    Install no documentation gate: no checker, no rules, no docs-quality.yml.
+    Install no documentation gate: no checker, no rules, and the
+    'documentation' job is removed from the installed docs-ci.yml.
 
 .PARAMETER Overwrite
     Replace files that already exist.
@@ -248,6 +251,49 @@ function ConvertTo-DockerTagSegment {
     return $slug
 }
 
+function Remove-MarkedBlock {
+    <#
+    .SYNOPSIS
+    Removes one marker-delimited block from templated content.
+
+    Shared by the DocumentationRules.psd1 GeneratedFiles strip (-NoHomepage)
+    and the docs-ci.yml documentation-job strip (-SkipGate). Both remove a
+    section of a byte-identical-to-template file when a feature is opted out
+    of, and both need the same two guarantees: locate by explicit marker
+    lines rather than indentation depth, so reformatting the template cannot
+    silently break the strip -- a missing marker throws instead -- and drop
+    one trailing blank line so removal doesn't leave a double gap between the
+    sections on either side of it.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Content,
+        [Parameter(Mandatory)][string]$StartMarker,
+        [Parameter(Mandatory)][string]$EndMarker,
+        [Parameter(Mandatory)][string]$FileLabel
+    )
+
+    $lines = @($Content -split "`r?`n")
+    $startLine = [Array]::IndexOf($lines, $StartMarker)
+    $endLine = [Array]::IndexOf($lines, $EndMarker)
+
+    if ($startLine -lt 0 -or $endLine -lt 0) {
+        throw (
+            "$FileLabel template is missing the expected markers " +
+            "('$($StartMarker.Trim())' / '$($EndMarker.Trim())'); cannot strip the block."
+        )
+    }
+
+    $removeThrough = $endLine
+    if ($endLine + 1 -lt $lines.Count -and [string]::IsNullOrWhiteSpace($lines[$endLine + 1])) {
+        $removeThrough++
+    }
+
+    $before = if ($startLine -gt 0) { $lines[0..($startLine - 1)] } else { @() }
+    $after = if ($removeThrough + 1 -lt $lines.Count) { $lines[($removeThrough + 1)..($lines.Count - 1)] } else { @() }
+
+    return ($before + $after) -join "`n"
+}
+
 function Resolve-ContainedProjectDirectory {
     <#
     .SYNOPSIS
@@ -406,35 +452,10 @@ if (-not $SkipGate) {
         # file this project does not generate. This also covers a project with
         # no README, where the generator was never installed and the check would
         # fail on a missing script rather than on real drift.
-        #
-        # Located by explicit marker lines (see DocumentationRules.psd1) rather
-        # than matched by indentation depth, so reformatting the template file
-        # cannot silently break this strip -- a missing marker throws instead.
-        $startMarker = '    # --- GeneratedFiles:start ---'
-        $endMarker = '    # --- GeneratedFiles:end ---'
-
-        $ruleLines = @($rules -split "`r?`n")
-        $startLine = [Array]::IndexOf($ruleLines, $startMarker)
-        $endLine = [Array]::IndexOf($ruleLines, $endMarker)
-
-        if ($startLine -lt 0 -or $endLine -lt 0) {
-            throw (
-                "DocumentationRules.psd1 template is missing the GeneratedFiles " +
-                "markers ('$($startMarker.Trim())' / '$($endMarker.Trim())'); " +
-                'cannot strip the block for -NoHomepage.'
-            )
-        }
-
-        # Also drop one trailing blank line, so removing the block doesn't leave
-        # a double gap between the sections on either side of it.
-        $removeThrough = $endLine
-        if ($endLine + 1 -lt $ruleLines.Count -and [string]::IsNullOrWhiteSpace($ruleLines[$endLine + 1])) {
-            $removeThrough++
-        }
-
-        $before = if ($startLine -gt 0) { $ruleLines[0..($startLine - 1)] } else { @() }
-        $after = if ($removeThrough + 1 -lt $ruleLines.Count) { $ruleLines[($removeThrough + 1)..($ruleLines.Count - 1)] } else { @() }
-        $rules = ($before + $after) -join "`n"
+        $rules = Remove-MarkedBlock -Content $rules `
+            -StartMarker '    # --- GeneratedFiles:start ---' `
+            -EndMarker '    # --- GeneratedFiles:end ---' `
+            -FileLabel 'DocumentationRules.psd1'
     }
 
     Set-ProjectFile `
@@ -446,29 +467,27 @@ if (-not $SkipGate) {
 # --- Workflows --------------------------------------------------------------
 
 if (-not $SkipWorkflow) {
-    Copy-TemplateFile -Name 'docs.yml' `
-        -Destination (Join-Path $workflowDir 'docs.yml') `
-        -Relative '.github/workflows/docs.yml'
+    # docs-ci.yml invokes the gate at a fixed path, ./build/Test-Documentation.ps1
+    # etc., unlike docs.ps1 and DocumentationRules.psd1 which are rewritten for
+    # -ScriptDir/-ConfigDir. A non-default -ScriptDir or -ConfigDir therefore
+    # requires -SkipWorkflow and hand-adjusting the installed workflow, same as
+    # today; this is not a new limitation, only carried over from the file split.
+    $docsCiContent = Get-Content -LiteralPath (Join-Path $templateDir 'docs-ci.yml') -Raw
 
-    $workflowInstaller = Join-Path $scriptRoot 'setup-docs-workflow.ps1'
-    if (-not (Test-Path -LiteralPath $workflowInstaller -PathType Leaf)) {
-        throw "Workflow installer not found at '$workflowInstaller'."
-    }
-    if ($PSCmdlet.ShouldProcess('.github/workflows', 'Install docs-ci.yml and docs-deploy.yml')) {
-        & $workflowInstaller -CallerProjectDir $projectPath -Overwrite:$Overwrite
+    if ($SkipGate) {
+        $docsCiContent = Remove-MarkedBlock -Content $docsCiContent `
+            -StartMarker '    # --- DocumentationGate:start ---' `
+            -EndMarker '    # --- DocumentationGate:end ---' `
+            -FileLabel 'docs-ci.yml'
     }
 
-    if (-not $SkipGate) {
-        Copy-TemplateFile -Name 'docs-quality.yml' `
-            -Destination (Join-Path $workflowDir 'docs-quality.yml') `
-            -Relative '.github/workflows/docs-quality.yml' `
-            -Replace @{
-                'build/Test-Documentation.ps1' = "$ScriptDir/Test-Documentation.ps1"
-                'build/ConvertTo-DocumentationHomepage.ps1' = "$ScriptDir/ConvertTo-DocumentationHomepage.ps1"
-                '.config/DocumentationRules.psd1' = "$ConfigDir/DocumentationRules.psd1"
-                './build/Test-Documentation.ps1' = "./$ScriptDir/Test-Documentation.ps1"
-            }
-    }
+    Set-ProjectFile -Destination (Join-Path $workflowDir 'docs-ci.yml') `
+        -Content $docsCiContent `
+        -Relative '.github/workflows/docs-ci.yml'
+
+    Copy-TemplateFile -Name 'docs-deploy.yml' `
+        -Destination (Join-Path $workflowDir 'docs-deploy.yml') `
+        -Relative '.github/workflows/docs-deploy.yml'
 }
 
 # --- Summary ----------------------------------------------------------------
@@ -482,14 +501,6 @@ foreach ($group in @(
     if ($group.Items.Count -eq 0) { continue }
     Write-Host "[SETUP] $($group.Label) ($($group.Items.Count)):" -ForegroundColor $group.Color
     foreach ($item in $group.Items) { Write-Host "          $item" -ForegroundColor $group.Color }
-}
-
-# docs-ci.yml and docs-deploy.yml are installed by setup-docs-workflow.ps1,
-# which reports them itself. Say so, or the counts above read as short by two.
-if (-not $SkipWorkflow) {
-    Write-Host ''
-    Write-Host '[SETUP] docs-ci.yml and docs-deploy.yml are reported separately above' -ForegroundColor DarkGray
-    Write-Host '        by setup-docs-workflow.ps1, which owns those two files.' -ForegroundColor DarkGray
 }
 
 if ($skipped.Count -gt 0 -and -not $Overwrite) {

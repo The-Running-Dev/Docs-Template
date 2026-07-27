@@ -106,3 +106,11 @@ Anything under `src/` is inherited by every site built from it.
 - In Projects tests, mock `localStorage` explicitly and keep the mocked `useAuth.refresh` function identity stable to avoid repeated fetch effects.
 - `useAdminProjects.bulkDelete` should stay parallel and aggregate delete failures instead of failing fast.
 - `useAuthenticatedFetch` should normalize headers with `Headers` rather than object spread so plain objects, tuples, and `Headers` inputs all keep their values.
+- A GitHub Actions workflow can never grant a job more permission than the
+  workflow itself declares. `docs-ci.yml` (gate + build, read-only) and
+  `docs-deploy.yml` (`pages: write`, `id-token: write`) stay two files for this
+  reason: folding deploy into a single workflow would hand the gate and build
+  jobs credentials they never use.
+- A required status check that never runs leaves a pull request permanently
+  blocked. `docs-ci.yml`'s triggers carry no `paths:` filter for this reason —
+  the saving on a skipped run is not worth a check that silently never reports.
