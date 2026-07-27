@@ -110,10 +110,16 @@ _Environments → github-pages_.
 To reproduce what CI builds, without pushing:
 
 ```bash
-docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+docker run --rm -v "$PWD:/work" -w /work \
   ghcr.io/the-running-dev/docs-template:latest \
   Invoke-DocsBuild -SourceDocs /work/docs -OutputPath /work/artifacts/docs
 ```
+
+Note the missing `--user` here, unlike the install command above. `Invoke-DocsBuild`
+overlays your `docs/` onto the image's root-owned `/template` before building, so a
+non-root user cannot write there and the run fails with
+`Access to the path '/template/Dockerfile' is denied`. `Invoke-SetupDocs` writes
+into the mount instead, which is where `--user` matters.
 
 ## Local preview
 
