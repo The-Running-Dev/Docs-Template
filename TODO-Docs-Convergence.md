@@ -34,10 +34,27 @@ stated reason.
 | `configure-pages`       | —         | v5      | v6     | v6     |
 | `deploy-pages`          | v4        | v4      | v5     | v5     |
 
-Risk to verify, not assume: `checkout@v5` and later run on Node 24, and these
-jobs execute inside an Alpine/musl container. Node's musl support is the fragile
-part of that combination. The bump needs a real CI run, and
-`upload-pages-artifact` must stay version-compatible with `deploy-pages`.
+The Node-on-musl risk originally recorded here has been **investigated and
+resolved — no code change was needed**, and the original framing was wrong on
+two counts:
+
+- It implied the bump introduced Node 24. It does not: `actions/checkout@v6`,
+  already in use before this work, declares `using: node24` — byte-identical to
+  `v7`. The runtime is unchanged by the bump.
+- It implied musl support was doubtful. GitHub's runner ships a musl build
+  specifically for this case. `src/Misc/externals.sh` in `actions/runner`
+  acquires `node24_alpine` from the `actions/alpine_nodejs` repository
+  alongside the glibc `node24`, and that repository has `v24.18.0` published,
+  matching the runner's pinned `NODE24_VERSION`. The runner detects a musl
+  container and selects it.
+
+Confirmed separately that the image itself has no glibc loader and no
+`gcompat`/`libc6-compat` package, so it genuinely is musl-only — the runner's
+alpine Node is what makes container jobs work, and adding a compat shim would
+be cargo-culting.
+
+Still worth noting: `upload-pages-artifact` and `deploy-pages` must stay
+version-compatible with each other.
 
 **Path filters — drop them.** Today's `docs.yml` filters on `docs/**`,
 `README.md`, and `docs.ps1`. A required status check that never runs leaves a
@@ -68,10 +85,10 @@ single-file `docs-ci.yml` is not adopted.
 - [x] Declare the triggers without `paths:` filters, per the decision above, so
       a required check always reports.
 - [x] Bump both the payload and this repository's own workflows to the target
-      action versions in the table above.
-      **Not yet confirmed with a real CI run** — Node 24 / Alpine-musl
-      compatibility is asserted from the version bump, not from a CI execution.
-      Verify in Phase 4's end-to-end pass.
+      action versions in the table above. The Node 24 / Alpine-musl concern
+      first recorded against this item is resolved — see "Decisions taken"
+      above. The bump does not change the Node runtime at all, and GitHub
+      ships a musl Node 24 for container jobs.
 - [x] Delete `scripts/template/docs.yml` (pure caller indirection) and
       `scripts/template/docs-quality.yml` (folded in).
 - [x] Delete `scripts/setup-docs-workflow.ps1`; fold its two-file install back
@@ -108,12 +125,9 @@ real `docker run` build, not just by reading:
 - [x] The gate (`Test-Documentation.ps1`) and the build
       (`docs-build.ps1` inside `ghcr.io/the-running-dev/docs-template:latest`)
       both run successfully end-to-end against a Phase 1 install.
-      **Caveat found and confirmed pre-existing, not a Phase 1 regression**:
-      `setup-docs.ps1`'s `docusaurus.config.ts` copy has no `-Replace` block,
-      so every install ships `title: ''`, which fails the Docusaurus build
-      with `"title" is not allowed to be empty`. Reproduced identically
-      against `main`'s unmodified script. Not fixed here — out of scope for a
-      workflow-file consolidation — but tracked below for Phase 4.
+      A caveat found here — every install shipping an empty title, which
+      Docusaurus rejects — was confirmed pre-existing rather than a Phase 1
+      regression, and has since been fixed. See below.
 
 ### Upgrade path — found in final review, fixed
 
@@ -142,17 +156,41 @@ delete both retired files whenever it installs workflows.
       `Removed` section, and `-SkipWorkflow` leaves all four files untouched
       since the script is not managing workflows on that path.
 
-### Follow-up found during Phase 1 (not yet fixed)
+### Config substitution — found during Phase 1, fixed
 
-- [ ] `scripts/setup-docs.ps1`'s `Copy-TemplateFile` call for
-      `docusaurus.config.ts` passes no `-Replace` hashtable, so `-Title`,
-      `-Description`, and `-SiteUrl` never reach the installed file — every
-      install ships `title: ''`, `tagline: ''`, `url: 'https://example.com'`,
-      and `onBrokenLinks: 'warn'`/`routeBasePath: 'docs'` at their unconfigured
-      template defaults. A real Docusaurus build fails on the empty title.
-      `planning/Install-DocsSystem.ps1` already has the correct substitution
-      block to port over. Fix before or during Phase 4's end-to-end pass, since
-      that is the first phase that actually builds a real site.
+`scripts/setup-docs.ps1`'s `Copy-TemplateFile` call for `docusaurus.config.ts`
+passed no `-Replace` hashtable, so `-Title`, `-Description`, and `-SiteUrl`
+never reached the installed file. Every install shipped the template's
+placeholders, and Docusaurus rejects an empty title outright, so the installed
+site could not build until someone hand-edited it. Pre-existing on `main`, not
+introduced by this work.
+
+`planning/Install-DocsSystem.ps1` has a substitution block for this, but
+porting it verbatim would have introduced a **new** bug: it escapes values with
+`ConvertTo-PowerShellSingleQuoted`, which doubles an embedded single quote.
+That is the PowerShell and YAML rule, not the JavaScript one. TypeScript reads
+the doubled form as two adjacent string literals and fails to parse — verified
+against `node`, which reports `Expected a semicolon`. A title as ordinary as
+`Ben's Docs` would have installed a config file Docusaurus cannot load.
+
+- [x] Added `ConvertTo-JavaScriptSingleQuoted`, escaping backslash first, then
+      the quote, and collapsing newlines, which a single-quoted JS literal
+      cannot contain.
+- [x] Substitutes title (both the site title and the navbar title, which
+      should agree) and tagline.
+- [x] Substitutes `url` **only when `-SiteUrl` was given**. The placeholder is
+      at least a valid absolute URL and Docusaurus rejects an empty one, so
+      writing `''` would trade one broken build for another.
+- [x] Deliberately leaves `onBrokenLinks` and `routeBasePath` alone. Both are
+      behavioural choices rather than unfilled placeholders, and flipping
+      `routeBasePath` to `/` would move every page's URL for a project already
+      serving from `/docs`.
+- [x] Verified with an adversarial title and description containing both an
+      apostrophe and double quotes: the installed config parses under `node`,
+      the values round-trip exactly, and a real Docusaurus build in the
+      published image now succeeds **with no hand-editing** — the same build
+      that previously failed — rendering the title correctly into the output
+      HTML. The no-`-SiteUrl` default path still installs a valid URL.
 
 ## P2 — Container entrypoint and an importable module
 

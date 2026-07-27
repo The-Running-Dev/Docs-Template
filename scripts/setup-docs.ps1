@@ -270,6 +270,32 @@ function ConvertTo-YamlSingleQuotedScalar {
     return "'$($collapsed.Replace("'", "''"))'"
 }
 
+function ConvertTo-JavaScriptSingleQuoted {
+    <#
+    .SYNOPSIS
+    Escapes a value for embedding in a single-quoted TypeScript string literal.
+
+    Deliberately not the same rule as ConvertTo-YamlSingleQuotedScalar above,
+    or as the psd1 substitutions further down, both of which escape an
+    embedded single quote by doubling it. TypeScript reads 'Ben''s Docs' as
+    two adjacent string literals and fails to parse -- confirmed against node
+    -- so a title containing an apostrophe would otherwise install a
+    docusaurus.config.ts that cannot be loaded at all.
+
+    Backslash is escaped first, or it would re-escape the backslashes this
+    function introduces for the quotes. Newlines are collapsed because a
+    single-quoted JavaScript literal cannot span lines.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Value
+    )
+
+    $collapsed = ($Value -replace '\r\n?|\n', ' ').Trim()
+    return $collapsed.Replace('\', '\\').Replace("'", "\'")
+}
+
 function ConvertTo-DockerTagSegment {
     <#
     .SYNOPSIS
@@ -413,9 +439,35 @@ foreach ($directory in @($docsDir, $contentDir)) {
     }
 }
 
+# Without these, every install shipped the template's placeholder values --
+# title: '' most importantly, which Docusaurus rejects outright with
+# '"title" is not allowed to be empty', so the installed site could not build
+# until someone hand-edited it. 'title: '''' matches both the site title and
+# the navbar title, which should agree anyway.
+#
+# url is only substituted when -SiteUrl was given: the placeholder
+# 'https://example.com' is at least a valid absolute URL, and Docusaurus
+# rejects an empty one, so writing '' would trade one broken build for
+# another.
+#
+# onBrokenLinks ('warn') and routeBasePath ('docs') are deliberately left at
+# the template's values. Both are behavioural choices rather than unfilled
+# placeholders -- flipping routeBasePath to '/' would move every page's URL
+# for projects already serving from /docs.
+$configReplacements = @{
+    "title: ''"   = "title: '$(ConvertTo-JavaScriptSingleQuoted -Value $Title)'"
+    "tagline: ''" = "tagline: '$(ConvertTo-JavaScriptSingleQuoted -Value $Description)'"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SiteUrl)) {
+    $configReplacements["url: 'https://example.com'"] =
+        "url: '$(ConvertTo-JavaScriptSingleQuoted -Value $SiteUrl.TrimEnd('/'))'"
+}
+
 Copy-TemplateFile -Name 'docusaurus.config.ts' `
     -Destination (Join-Path $docsDir 'docusaurus.config.ts') `
-    -Relative 'docs/docusaurus.config.ts'
+    -Relative 'docs/docusaurus.config.ts' `
+    -Replace $configReplacements
 
 Copy-TemplateFile -Name 'sidebar.ts' `
     -Destination (Join-Path $docsDir 'sidebar.ts') `
