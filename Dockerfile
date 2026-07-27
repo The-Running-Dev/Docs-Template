@@ -69,7 +69,24 @@ LABEL org.opencontainers.image.licenses="MIT"
 # `docker run -it <image> pwsh` -- can call Invoke-SetupDocs / Invoke-DocsBuild
 # directly, auto-loading the module on first use with no explicit
 # Import-Module required.
-ENV PSModulePath="/template/PowerShell:${PSModulePath}"
+#
+# No ${PSModulePath} suffix: ENV substitution only sees prior ARG/ENV values in
+# this Dockerfile, not pwsh's own runtime default, so a trailing
+# ":${PSModulePath}" here would expand to a bare trailing colon at build time,
+# not "append to whatever pwsh already has". pwsh merges its own default
+# module paths in ahead of this value at startup regardless (confirmed:
+# built-in modules still resolve), so overriding rather than appending is both
+# correct and what actually happens either way.
+ENV PSModulePath="/template/PowerShell"
+
+# An arbitrary --user UID (as recommended for Invoke-SetupDocs, so written
+# files aren't root-owned on the host) has no /etc/passwd entry, so $HOME
+# resolves to '/', which is not writable. pwsh then falls back to writing its
+# startup-profile cache (StartupProfileData-NonInteractive) into the current
+# directory instead -- confirmed by reproduction, and confirmed fixed by
+# giving it a writable HOME. /tmp is world-writable (rwxrwxrwt) regardless of
+# UID, unlike anywhere under /template, which root owns from the build.
+ENV HOME=/tmp
 
 # Expose port 3000
 EXPOSE 3000

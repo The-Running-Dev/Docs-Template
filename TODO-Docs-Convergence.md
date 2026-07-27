@@ -236,14 +236,31 @@ image in Phase 0):
       parameter-binding crash.
 - [x] `Test-ModuleManifest` and the PowerShell AST parser both accept every
       new `.ps1`/`.psd1`/`.psm1` file with zero errors.
-- [ ] Full image rebuild from the modified `Dockerfile` was **not** run in
-      this session (would reinstall PowerShell + all pnpm dependencies from
-      scratch). Everything above was verified by bind-mounting the new files
-      over the currently published image, which carries an identical
-      `/template` tree apart from these additions. Do a real `docker build`
-      before merging, to catch anything specific to build-time layering (e.g.
-      the `ENV PSModulePath` line, or `COPY . ./` picking up the new
-      `PowerShell/` and `scripts/entrypoint.sh` correctly).
+- [x] Full `docker build` run against the modified `Dockerfile` — caught two
+      real issues the bind-mount tests couldn't, both fixed:
+      1. `ENV PSModulePath="/template/PowerShell:${PSModulePath}"` referenced
+         a Dockerfile build-arg that was never defined (Docker's `${VAR}`
+         substitution only sees prior `ARG`/`ENV` values, not pwsh's own
+         runtime environment), flagged by the builder's own linter and
+         confirmed by inspecting the baked-in value: a bare trailing colon,
+         not an appended path. Harmless in practice — pwsh always merges its
+         own default module paths in ahead of whatever is preset, confirmed
+         by `Get-Module -ListAvailable` still resolving built-ins — but fixed
+         by dropping the meaningless suffix rather than leaving a warning
+         uninvestigated.
+      2. **Real bug**: `--user "$(id -u):$(id -g)"` — the invocation
+         `AGENTS.md` recommends specifically to avoid root-owned output —
+         left an unmapped UID with `HOME=/`, which is not writable. pwsh
+         fell back to writing its startup-profile cache
+         (`StartupProfileData-NonInteractive`) into the caller's project
+         directory instead. Root cause isolated by testing `-e HOME=/tmp`
+         and `POWERSHELL_TELEMETRY_OPTOUT=1` independently — only `HOME`
+         mattered. Fixed with `ENV HOME=/tmp` in the `Dockerfile` (`/tmp` is
+         world-writable regardless of UID, unlike anywhere under
+         `/template`, which root owns from the build) rather than expecting
+         every caller to pass `-e HOME=/tmp` themselves. Verified the stray
+         file is gone with `--user` and that root-run behavior (no `--user`)
+         is unaffected.
 
 ## P3 — Manifest parameter surface
 
