@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -27,6 +27,13 @@ jobs:
 
       - name: Run prebuild to generate data
         run: pnpm run prebuild
+
+      # Generation is a check in its own right: it validates the specification
+      # and imports the result, so a command or parameter that no longer
+      # resolves fails here rather than at release time.
+      - name: Generate PowerShell Module
+        shell: pwsh
+        run: ./scripts/build-psmodule.ps1
 
       - name: Run component tests with coverage
         run: pnpm test:components

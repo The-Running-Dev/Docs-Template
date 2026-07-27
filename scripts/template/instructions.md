@@ -12,11 +12,13 @@ The setup script copies both into caller repositories at:
 
 ## Result
 
-After running `scripts/setup-docs-workflow.ps1`, the caller repository has both
-docs workflows. Each declares `workflow_call` + `workflow_dispatch`, so:
+After running the installer, the caller repository has both docs workflows.
+Each carries its own triggers rather than being driven by a caller workflow:
 
-1. The caller's **main** workflow drives them (verify vs deploy) via `uses:`.
-2. Each is runnable manually from the Actions tab / `gh workflow run`.
+1. `docs-ci.yml` runs the gate and build verification on pull requests and
+   pushes to `main`.
+2. `docs-deploy.yml` builds and deploys to Pages on pushes to `main`.
+3. Both are runnable manually from the Actions tab / `gh workflow run`.
 
 Neither workflow runs on push or pull_request directly. Both run their steps
 inside the published base image (`container:`), overlay the caller's `./docs`

@@ -1,10 +1,17 @@
 name: Docs Deploy
 
-# Build the documentation and deploy it to GitHub Pages. Reusable and manually
-# runnable; the caller's main workflow decides when to call it. No push/PR
-# triggers.
+# Build the documentation and deploy it to GitHub Pages. Triggers directly on
+# push to main -- there is no longer a caller workflow multiplexing verify vs.
+# deploy, so each half of that split (docs-ci.yml, this file) carries its own
+# triggers and only the permissions it actually needs. Deploy is the only job
+# that needs pages/id-token, which is why it stayed a separate file rather than
+# folding into docs-ci.yml: a single workflow can never grant a job more
+# permission than the workflow itself declares, so combining them would hand
+# the gate and verify jobs credentials they have no use for.
 "on":
-    workflow_call:
+    push:
+        branches:
+            - main
     workflow_dispatch:
 
 permissions:
@@ -38,19 +45,19 @@ jobs:
 
         steps:
             - name: Check out Repository
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - name: Configure GitHub Pages
-              uses: actions/configure-pages@v5
+              uses: actions/configure-pages@v6
 
             - name: Build Documentation
               run: /template/scripts/docs-build.ps1 -SourceDocs ./docs -OutputPath artifacts/docs
 
             - name: Upload Pages Artifact
-              uses: actions/upload-pages-artifact@v4
+              uses: actions/upload-pages-artifact@v5
               with:
                   path: artifacts/docs
 
             - name: Deploy to GitHub Pages
               id: deployment
-              uses: actions/deploy-pages@v4
+              uses: actions/deploy-pages@v5

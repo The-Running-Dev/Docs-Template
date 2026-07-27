@@ -123,7 +123,7 @@ jobs:
       # STEP 1: REPOSITORY CHECKOUT
       # ================================================================
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Fetch complete git history for proper README processing
           fetch-depth: 0
@@ -141,7 +141,17 @@ jobs:
         run: pnpm run quality-ci
 
       # ================================================================
-      # STEP 4: BUILD DOCUSAURUS SITE
+      # STEP 4: GENERATE POWERSHELL MODULE
+      # ================================================================
+      # Builds the module from PSModule/PSModule.psd1 so a broken specification
+      # fails here rather than at release time, which is the only other place
+      # this runs and the one where it blocks the image build.
+      - name: Generate PowerShell Module
+        shell: pwsh
+        run: ./scripts/build-psmodule.ps1
+
+      # ================================================================
+      # STEP 5: BUILD DOCUSAURUS SITE
       # ================================================================
       - name: Build Docusaurus Site
         run: pnpm run build:prod

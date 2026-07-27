@@ -115,16 +115,17 @@
 # ====================================================================
 #
 # Image and site publication run from the main branch release workflow.
-# The image is tagged :latest and a date-based :YYYY.MM.DD version computed in
-# the publish step; both are pushed by scripts/docs-build-image.ps1.
+# The image is published by scripts/docs-build-image.ps1 with two tags: :latest
+# as the moving pointer, and an immutable GitVersion tag computed from
+# GitVersion.yml so a specific build stays pinnable after :latest moves.
 #
 # ====================================================================
 # OUTPUTS & ARTIFACTS
 # ====================================================================
 #
 # This workflow produces:
-# - Docker Image: ghcr.io/the-running-dev/docs-template:latest and :YYYY.MM.DD
-# - Registry Tags: :latest plus a date-based version, pushed by the publish step
+# - Docker Image: ghcr.io/the-running-dev/docs-template:latest and :<GitVersion>
+# - Registry Tags: :latest plus an immutable GitVersion tag, pushed by the publish step
 # - GitHub Pages deployment for the static documentation site
 # - One release path for both site and container outputs
 #
@@ -196,7 +197,7 @@ jobs:
       # STEP 1: REPOSITORY CHECKOUT
       # ================================================================
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Fetch complete git history for proper README processing
           fetch-depth: 0
@@ -226,6 +227,92 @@ jobs:
       # STEP 5: VERSION, BUILD & PUBLISH CONTAINER IMAGE
       # ================================================================
       # On pull requests, validate the image builds (no login, no push).
+      # Must precede every image build: the Dockerfile copies artifacts/PSModule
+      # to /PSModule, so without this the build fails on a missing directory.
+      # Generated rather than committed, so the module can never drift from the
+      # specification it is built from.
+      - name: Generate PowerShell Module
+        shell: pwsh
+        run: ./scripts/build-psmodule.ps1
+
+      # Computed on every run, including pull requests that never push, so a
+      # broken version calculation fails here rather than at publish time.
+      # GitVersion reads GitVersion.yml and needs full history, which the
+      # checkout above already fetches with fetch-depth: 0.
+      #
+      # Installed as a dotnet tool rather than run from its container image:
+      # this job runs inside a container, and a `docker run -v` of the
+      # repository would be resolved by the daemon on the host, where this
+      # path does not exist. That is the exact failure that broke the module
+      # generation step, and it applies identically here.
+      - name: Compute Version (GitVersion)
+        id: version
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        run: |
+          # The workspace is owned by the runner's user while this job's
+          # container runs as root, so git's dubious-ownership check rejects
+          # the repository. GitVersion uses LibGit2Sharp, which enforces that
+          # check itself and fails with "repository path ... is not owned by
+          # current user" -- the actual error behind three earlier failures
+          # here. actions/checkout marks the directory safe only for the
+          # duration of its own step, so it has to be marked again for this one.
+          git config --global --add safe.directory $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw "Marking the workspace safe failed with exit code $LASTEXITCODE." }
+
+          $toolPath = Join-Path $env:RUNNER_TEMP 'gitversion'
+          dotnet tool install GitVersion.Tool --version '6.*' --tool-path $toolPath
+          if ($LASTEXITCODE -ne 0) { throw "GitVersion install failed with exit code $LASTEXITCODE." }
+
+          # /showvariable returns one bare value, which avoids the JSON parsing
+          # that failed here earlier with "Error parsing Infinity value" when
+          # GitVersion wrote log text alongside the JSON.
+          #
+          # Verbosity is deliberately NOT set to Quiet. A previous attempt did,
+          # and when GitVersion then exited non-zero the reason was suppressed
+          # along with everything else, leaving nothing to diagnose. The output
+          # is captured, echoed on any failure, and the version picked out by
+          # pattern, so log lines cannot break extraction either.
+          $raw = & (Join-Path $toolPath 'dotnet-gitversion') /output json /showvariable MajorMinorPatch 2>&1
+          $gitVersionExit = $LASTEXITCODE
+
+          if ($gitVersionExit -ne 0) {
+              Write-Host '--- GitVersion output ---'
+              Write-Host ($raw | Out-String)
+              throw "GitVersion failed with exit code $gitVersionExit."
+          }
+
+          $version = $raw |
+              ForEach-Object { "$_".Trim() } |
+              Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
+              Select-Object -Last 1
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              Write-Host '--- GitVersion output ---'
+              Write-Host ($raw | Out-String)
+              throw 'Could not parse a version from GitVersion output.'
+          }
+
+          # MajorMinorPatch rather than FullSemVer, and the commit appended
+          # separately. FullSemVer embeds a branch-derived pre-release label,
+          # and Actions always checks out a detached HEAD, so GitVersion can
+          # resolve the branch to '-no-branch-' and bake that into the tag.
+          # MajorMinorPatch is identical detached or not -- verified both ways.
+          #
+          # The short commit is what makes the tag immutable: the repository has
+          # no git tags yet, so MajorMinorPatch stays 1.0.0 for every build and
+          # a bare :1.0.0 would be overwritten by each push.
+          $imageVersion = "$version-$($env:GITHUB_SHA.Substring(0, 7))"
+          if ($imageVersion -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$') {
+              throw "Computed '$imageVersion', which is not a valid Docker tag."
+          }
+
+          Write-Host "Version:  $version"
+          Write-Host "ImageTag: $imageVersion"
+          "version=$imageVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Build docs-template Image (validate, no push)
         if: github.event_name == 'pull_request'
         shell: pwsh
@@ -239,23 +326,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
-      - name: Version, Build & Push docs-template Image
+      # Two tags with different jobs: :latest is the moving pointer consumers
+      # track, and the GitVersion tag is immutable, so a specific build can be
+      # pinned and reproduced after :latest has moved on.
+      - name: Build & Push docs-template Image
         id: publish
         if: github.event_name != 'pull_request'
         shell: pwsh
+        env:
+          IMAGE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $version = Get-Date -Format 'yyyy.MM.dd'
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Publishing docs-template image :latest and :$version"
+          Write-Host "Publishing docs-template image :latest and :$env:IMAGE_VERSION"
           ./scripts/docs-build-image.ps1 `
-            -AdditionalTags "ghcr.io/the-running-dev/docs-template:$version" `
+            -AdditionalTags "ghcr.io/the-running-dev/docs-template:$env:IMAGE_VERSION" `
             -Push
 
       # ================================================================
       # STEP 6: UPLOAD PAGES ARTIFACT
       # ================================================================
       - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: artifacts/
 
@@ -286,7 +376,7 @@ jobs:
       # ============================================================
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
 # ====================================================================
 # TROUBLESHOOTING GUIDE

@@ -17,8 +17,9 @@
     Primary image reference to build. Default the published base image at :latest.
 
 .PARAMETER AdditionalTags
-    Extra tags to apply to the same image (e.g. a YYYY.MM.DD version). Each is
-    also pushed when -Push is set.
+    Extra tags to apply to the same image. Each is also pushed when -Push is
+    set. The release workflow passes an immutable GitVersion tag here, computed
+    from GitVersion.yml, alongside the :latest that -Tag defaults to.
 
 .PARAMETER Context
     Docker build context. Defaults to the repository root (the parent of this
@@ -50,8 +51,8 @@
     ./scripts/docs-build-image.ps1 -Push
 
 .EXAMPLE
-    # Build, tag a dated version, log in, and push both
-    ./scripts/docs-build-image.ps1 -AdditionalTags ghcr.io/the-running-dev/docs-template:2026.07.25 `
+    # Build, apply a second tag, log in, and push both
+    ./scripts/docs-build-image.ps1 -AdditionalTags ghcr.io/the-running-dev/docs-template:preview `
         -Push -Username $env:GITHUB_ACTOR -Token $env:REGISTRY_TOKEN
 #>
 

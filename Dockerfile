@@ -58,15 +58,56 @@ COPY . ./
 # their own docs without inherited sample content.
 RUN Remove-Item -Recurse -Force /template/docs -ErrorAction SilentlyContinue
 
+# The generated PowerShell module, embedded at the location Install-PSModule
+# retrieves from. Built by scripts/build-psmodule.ps1 from PSModule/PSModule.psd1
+# via SubZeroDev.PSGenerator, and self-contained -- the generator copies the
+# scripts each command invokes into /PSModule/Scripts.
+#
+# Produced into artifacts/, which .dockerignore otherwise excludes; the
+# exception there is what lets this COPY see it. Run the build script before
+# `docker build`, or this fails with the directory missing rather than silently
+# shipping an image with no module.
+COPY artifacts/PSModule /PSModule
+
 # Link this image to its source repository so GHCR lists it under the repo's
 # Packages and inherits repo visibility/permissions.
 LABEL org.opencontainers.image.source="https://github.com/The-Running-Dev/Docusaurus-Template"
 LABEL org.opencontainers.image.description="Docusaurus documentation template base image"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# Where the generated module lives, so an interactive
+# `docker run -it <image> pwsh` can import it without knowing the layout:
+#
+#   Import-Module $env:DOCS_TEMPLATE_MODULE
+#
+# Not a PSModulePath entry, because PowerShell only auto-loads a module whose
+# directory name matches its manifest, and this one is /PSModule containing
+# DocsTemplate.psd1. entrypoint.sh's dispatcher reads the same variable.
+ENV DOCS_TEMPLATE_MODULE="/PSModule/DocsTemplate.psd1"
+
+# An arbitrary --user UID (as recommended for Invoke-SetupDocs, so written
+# files aren't root-owned on the host) has no /etc/passwd entry, so $HOME
+# resolves to '/', which is not writable. pwsh then falls back to writing its
+# startup-profile cache (StartupProfileData-NonInteractive) into the current
+# directory instead -- confirmed by reproduction, and confirmed fixed by
+# giving it a writable HOME. /tmp is world-writable (rwxrwxrwt) regardless of
+# UID, unlike anywhere under /template, which root owns from the build.
+ENV HOME=/tmp
+
 # Expose port 3000
 EXPOSE 3000
 
-# Run the web service on container startup.
-# Use start:docker which binds to 0.0.0.0, making it accessible from outside the container
-CMD ["sh", "-c", "pnpm run start:docker"]
+# entrypoint.sh dispatches on argv[0]: no args (or 'dev') runs start:docker,
+# preserving today's bare `docker run <image>` behavior; 'pwsh'/'sh' exec
+# directly; anything else is looked up as an exported DocsTemplate
+# command. Invoked via `/bin/sh <path>` rather than relying on the file's own
+# execute bit or shebang, so a COPY that lands without the execute bit still
+# runs.
+#
+# 'dev' needs documentation mounted over /template/docs to serve anything, since
+# the docs tree is deleted above. entrypoint.sh checks for that before starting
+# and exits with the mount commands to use, instead of letting Docusaurus fail
+# with a stack trace and leaving the container running behind it.
+# scripts/preview-docs.ps1 is what sets those mounts up.
+ENTRYPOINT ["/bin/sh", "/template/scripts/entrypoint.sh"]
+CMD ["dev"]

@@ -1,0 +1,6 @@
+# Force LF regardless of core.autocrlf. scripts/entrypoint.sh runs inside a
+# Linux container via `/bin/sh`; a CRLF-mangled shebang line fails with
+# "no such file or directory" even though the file looks fine in an editor.
+# See AGENTS.md "Recent Lessons Learned" for the prettier/autocrlf trap this
+# repository already hit once with generated docs output.
+*.sh text eol=lf

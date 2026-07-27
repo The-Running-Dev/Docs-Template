@@ -1,0 +1,28 @@
+# GitVersion configuration.
+#
+# Interim: this exists so the version has a single declared source now that the
+# image no longer carries a date tag. The build agent is expected to replace it
+# later, so it is deliberately minimal rather than tuned.
+#
+# GitHubFlow/v1 matches how this repository actually works: short-lived
+# branches merged into main by pull request, no long-running release branches.
+# Squash and rebase are the only merge methods the Main ruleset allows, so
+# every commit on main is a release candidate and continuous-deployment
+# labelling is the honest fit.
+$schema: https://raw.githubusercontent.com/GitTools/GitVersion/main/schemas/6.0/GitVersion.configuration.json
+
+workflow: GitHubFlow/v1
+
+# Nothing has been tagged yet, so without this GitVersion starts at 0.0.1 and
+# every build looks like a pre-release of a version that was never planned.
+# Set to the version this template is working towards; see TODO-Next.md, which
+# holds publishing until 1.0 is formalized.
+next-version: 1.0.0
+
+# main is the only branch that produces a deployable version. Everything else
+# gets a pre-release label from its branch name, which keeps a feature branch's
+# version obviously not-a-release.
+branches:
+  main:
+    label: ''
+    increment: Patch
