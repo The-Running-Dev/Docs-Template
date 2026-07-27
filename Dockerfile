@@ -58,26 +58,32 @@ COPY . ./
 # their own docs without inherited sample content.
 RUN Remove-Item -Recurse -Force /template/docs -ErrorAction SilentlyContinue
 
+# The generated PowerShell module, embedded at the location Install-PSModule
+# retrieves from. Built by scripts/build-psmodule.ps1 from PSModule/PSModule.psd1
+# via SubZeroDev.PSGenerator, and self-contained -- the generator copies the
+# scripts each command invokes into /PSModule/Scripts.
+#
+# Produced into artifacts/, which .dockerignore otherwise excludes; the
+# exception there is what lets this COPY see it. Run the build script before
+# `docker build`, or this fails with the directory missing rather than silently
+# shipping an image with no module.
+COPY artifacts/PSModule /PSModule
+
 # Link this image to its source repository so GHCR lists it under the repo's
 # Packages and inherits repo visibility/permissions.
 LABEL org.opencontainers.image.source="https://github.com/The-Running-Dev/Docusaurus-Template"
 LABEL org.opencontainers.image.description="Docusaurus documentation template base image"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# Puts PowerShell/DocusaurusTemplate on the module search path, so any pwsh
-# session in this image -- the entrypoint's dispatch, or an interactive
-# `docker run -it <image> pwsh` -- can call Invoke-SetupDocs / Invoke-DocsBuild
-# directly, auto-loading the module on first use with no explicit
-# Import-Module required.
+# Where the generated module lives, so an interactive
+# `docker run -it <image> pwsh` can import it without knowing the layout:
 #
-# No ${PSModulePath} suffix: ENV substitution only sees prior ARG/ENV values in
-# this Dockerfile, not pwsh's own runtime default, so a trailing
-# ":${PSModulePath}" here would expand to a bare trailing colon at build time,
-# not "append to whatever pwsh already has". pwsh merges its own default
-# module paths in ahead of this value at startup regardless (confirmed:
-# built-in modules still resolve), so overriding rather than appending is both
-# correct and what actually happens either way.
-ENV PSModulePath="/template/PowerShell"
+#   Import-Module $env:DOCUSAURUS_TEMPLATE_MODULE
+#
+# Not a PSModulePath entry, because PowerShell only auto-loads a module whose
+# directory name matches its manifest, and this one is /PSModule containing
+# DocusaurusTemplate.psd1. entrypoint.sh's dispatcher reads the same variable.
+ENV DOCUSAURUS_TEMPLATE_MODULE="/PSModule/DocusaurusTemplate.psd1"
 
 # An arbitrary --user UID (as recommended for Invoke-SetupDocs, so written
 # files aren't root-owned on the host) has no /etc/passwd entry, so $HOME

@@ -35,7 +35,30 @@ $command = $args[0]
 $rest = @()
 if ($args.Count -gt 1) { $rest = $args[1..($args.Count - 1)] }
 
-$moduleManifest = Join-Path $PSScriptRoot '../PowerShell/DocusaurusTemplate/DocusaurusTemplate.psd1'
+# The generated module, embedded at /PSModule by the Dockerfile. Imported by
+# explicit manifest path rather than by name: the directory is /PSModule while
+# the manifest is DocusaurusTemplate.psd1, and PowerShell only auto-loads a
+# module whose folder name matches its manifest, so no PSModulePath entry would
+# find this one.
+#
+# Overridable for a source checkout, where the module is built to
+# artifacts/PSModule and /PSModule does not exist.
+$moduleManifest = if ($env:DOCUSAURUS_TEMPLATE_MODULE) {
+    $env:DOCUSAURUS_TEMPLATE_MODULE
+}
+else {
+    '/PSModule/DocusaurusTemplate.psd1'
+}
+
+if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) {
+    throw (
+        "The generated PowerShell module was not found at '$moduleManifest'. " +
+        'In the published image it is embedded at /PSModule; from a source ' +
+        'checkout run ./scripts/build-psmodule.ps1 and point ' +
+        'DOCUSAURUS_TEMPLATE_MODULE at artifacts/PSModule/DocusaurusTemplate.psd1.'
+    )
+}
+
 Import-Module $moduleManifest -Force -ErrorAction Stop
 
 $resolved = Get-Command -Name $command -Module DocusaurusTemplate -ErrorAction SilentlyContinue

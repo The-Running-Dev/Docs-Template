@@ -225,6 +225,14 @@ jobs:
       # STEP 5: VERSION, BUILD & PUBLISH CONTAINER IMAGE
       # ================================================================
       # On pull requests, validate the image builds (no login, no push).
+      # Must precede every image build: the Dockerfile copies artifacts/PSModule
+      # to /PSModule, so without this the build fails on a missing directory.
+      # Generated rather than committed, so the module can never drift from the
+      # specification it is built from.
+      - name: Generate PowerShell Module
+        shell: pwsh
+        run: ./scripts/build-psmodule.ps1
+
       - name: Build docs-template Image (validate, no push)
         if: github.event_name == 'pull_request'
         shell: pwsh
