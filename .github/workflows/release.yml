@@ -256,17 +256,34 @@ jobs:
           dotnet tool install GitVersion.Tool --version '6.*' --tool-path $toolPath
           if ($LASTEXITCODE -ne 0) { throw "GitVersion install failed with exit code $LASTEXITCODE." }
 
-          # /showvariable with quiet verbosity returns one bare value. The
-          # earlier version of this step piped `/output json` into
-          # ConvertFrom-Json and failed here with "Error parsing Infinity
-          # value": GitVersion had written log text alongside the JSON, and the
-          # parser choked on the first character of it. Asking for a single
-          # variable removes the parsing step entirely rather than trying to
-          # filter logs out of a stream.
-          $version = (& (Join-Path $toolPath 'dotnet-gitversion') `
-              /output json /showvariable MajorMinorPatch /verbosity Quiet | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0) { throw "GitVersion failed with exit code $LASTEXITCODE." }
-          if ([string]::IsNullOrWhiteSpace($version)) { throw 'GitVersion returned no version.' }
+          # /showvariable returns one bare value, which avoids the JSON parsing
+          # that failed here earlier with "Error parsing Infinity value" when
+          # GitVersion wrote log text alongside the JSON.
+          #
+          # Verbosity is deliberately NOT set to Quiet. A previous attempt did,
+          # and when GitVersion then exited non-zero the reason was suppressed
+          # along with everything else, leaving nothing to diagnose. The output
+          # is captured, echoed on any failure, and the version picked out by
+          # pattern, so log lines cannot break extraction either.
+          $raw = & (Join-Path $toolPath 'dotnet-gitversion') /output json /showvariable MajorMinorPatch 2>&1
+          $gitVersionExit = $LASTEXITCODE
+
+          if ($gitVersionExit -ne 0) {
+              Write-Host '--- GitVersion output ---'
+              Write-Host ($raw | Out-String)
+              throw "GitVersion failed with exit code $gitVersionExit."
+          }
+
+          $version = $raw |
+              ForEach-Object { "$_".Trim() } |
+              Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
+              Select-Object -Last 1
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              Write-Host '--- GitVersion output ---'
+              Write-Host ($raw | Out-String)
+              throw 'Could not parse a version from GitVersion output.'
+          }
 
           # MajorMinorPatch rather than FullSemVer, and the commit appended
           # separately. FullSemVer embeds a branch-derived pre-release label,
