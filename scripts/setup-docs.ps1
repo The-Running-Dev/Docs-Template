@@ -587,6 +587,16 @@ function Resolve-ContainedProjectDirectory {
     Opt-in rather than the default: -ScriptDir/-ConfigDir/-WorkflowDir have
     always allowed this and changing that now would be a behaviour change
     unrelated to whatever added this switch.
+
+    All of the above is lexical: GetFullPath collapses '.'/'..' and
+    separators, but it does not follow symlinks or junctions. A path
+    component already sitting on disk as a link to somewhere outside
+    -ProjectRoot would pass every check so far and then receive this
+    installer's real writes at its link target instead. So before returning,
+    every segment of -Value that already exists is walked and checked for a
+    link resolving outside -ProjectRoot's own physical location; a segment
+    that does not exist yet is where the walk stops, since nothing beneath a
+    path that does not exist can itself already be a planted link.
     #>
     param (
         [Parameter(Mandatory)]
@@ -612,6 +622,32 @@ function Resolve-ContainedProjectDirectory {
 
     if (@($Value -split '[\\/]') -contains '..') {
         throw "-$ParameterName must not contain '..' segments: '$Value'."
+    }
+
+    $physicalRootInfo = [IO.Directory]::ResolveLinkTarget($ProjectRoot, $true)
+    $physicalRoot = if ($physicalRootInfo) { $physicalRootInfo.FullName } else { $ProjectRoot }
+    $physicalRoot = $physicalRoot.TrimEnd('\', '/')
+
+    $walked = $ProjectRoot.TrimEnd('\', '/')
+    foreach ($segment in @($Value -split '[\\/]' | Where-Object { $_ -and $_ -ne '.' })) {
+        $walked = Join-Path $walked $segment
+        if (-not (Test-Path -LiteralPath $walked)) {
+            break
+        }
+
+        $walkedItem = Get-Item -LiteralPath $walked -Force
+        if ($walkedItem.LinkType) {
+            $linkTargetInfo = [IO.Directory]::ResolveLinkTarget($walked, $true)
+            $resolvedLinkTarget = if ($linkTargetInfo) { $linkTargetInfo.FullName.TrimEnd('\', '/') } else { $walked }
+
+            if ($resolvedLinkTarget -ne $physicalRoot -and
+                -not $resolvedLinkTarget.StartsWith($physicalRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                throw (
+                    "-$ParameterName resolves through '$walked', a $($walkedItem.LinkType) pointing " +
+                    "outside the project directory: '$Value' -> '$resolvedLinkTarget'."
+                )
+            }
+        }
     }
 
     $resolved = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $Value))

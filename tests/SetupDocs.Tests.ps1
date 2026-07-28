@@ -304,6 +304,44 @@ Describe 'setup-docs.ps1 -DocsDirectory' {
         } | Should -Throw '*must not nest*'
     }
 
+    It 'rejects a -DocsDirectory that is a symlink resolving outside the project' {
+        # Lexical containment (GetFullPath plus a prefix check) does not
+        # follow links, so a pre-planted symlink at the docs directory's own
+        # path would otherwise pass validation and then receive this
+        # installer's real writes at the external target.
+        $projectDir = Join-Path $TestDrive 'symlink-escape'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        $externalTarget = Join-Path $TestDrive 'symlink-escape-external'
+        New-Item -ItemType Directory -Path $externalTarget -Force | Out-Null
+        New-Item -ItemType SymbolicLink -Path (Join-Path $projectDir 'documentation') -Target $externalTarget | Out-Null
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'documentation' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*pointing outside the project directory*'
+
+        Test-Path -LiteralPath (Join-Path $externalTarget 'docusaurus.config.ts') | Should -BeFalse
+    }
+
+    It 'accepts a -DocsDirectory that is a symlink resolving inside the project' {
+        # A link is not inherently unsafe -- only one that escapes the
+        # project. This is the negative case for the check above, confirming
+        # it does not also reject an internal symlink a project legitimately
+        # set up itself.
+        $projectDir = Join-Path $TestDrive 'symlink-internal'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        $internalTarget = Join-Path $projectDir 'actual-docs'
+        New-Item -ItemType Directory -Path $internalTarget -Force | Out-Null
+        New-Item -ItemType SymbolicLink -Path (Join-Path $projectDir 'documentation') -Target $internalTarget | Out-Null
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Symlink Internal' -DocsDirectory 'documentation' `
+                -SkipWorkflow -SkipGate
+        } | Should -Not -Throw
+
+        Test-Path -LiteralPath (Join-Path $internalTarget 'docusaurus.config.ts') | Should -BeTrue
+    }
+
     It 'rejects a -DocsDirectory containing whitespace' {
         $projectDir = Join-Path $TestDrive 'invalid-whitespace-name'
         {
