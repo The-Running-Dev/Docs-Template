@@ -685,7 +685,14 @@ $workflowDir = Resolve-ContainedProjectDirectory -Value $WorkflowDir -ParameterN
 # run it here -- the same reasoning that keeps a stale docs/docs/index.md
 # from being auto-migrated further down.
 $docsDirectoryExplicit = $PSBoundParameters.ContainsKey('DocsDirectory')
-$installedDocsDirectories = Find-InstalledDocsDirectory -ProjectRoot $projectPath
+
+# @() at the call site, not just around later uses: PowerShell enumerates an
+# array crossing a function's output stream, so a single-match result arrives
+# here as a bare string and a zero-match result as $null -- either would fail
+# .Count under Set-StrictMode. Find-InstalledDocsDirectory's own `return @()`
+# only guarantees array *shape* inside the function; it does not survive
+# unless the caller re-wraps it too.
+$installedDocsDirectories = @(Find-InstalledDocsDirectory -ProjectRoot $projectPath)
 
 if ($docsDirectoryExplicit) {
     $conflicting = @($installedDocsDirectories | Where-Object { $_ -ne $DocsDirectory })
