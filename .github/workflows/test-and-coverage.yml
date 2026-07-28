@@ -35,6 +35,14 @@ jobs:
         shell: pwsh
         run: ./scripts/build-psmodule.ps1
 
+      # The runner's built-in Pester (3.4.0) does not understand Describe/It
+      # blocks written in the v5 syntax these tests use.
+      - name: Run PowerShell (Pester) tests
+        shell: pwsh
+        run: |
+          Install-Module -Name Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Invoke-Pester -Path ./tests -CI
+
       - name: Run component tests with coverage
         run: pnpm test:components
 

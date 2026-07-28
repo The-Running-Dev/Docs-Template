@@ -269,11 +269,28 @@ function Remove-RetiredFile {
 }
 
 function Copy-TemplateFile {
+    <#
+    .SYNOPSIS
+    Copies one template asset into the project, substituting placeholders.
+
+    -Replace matches literal text, applied with String.Replace. -RegexReplace
+    matches a pattern, applied with a MatchEvaluator delegate rather than a
+    replacement-pattern string, so a replacement value containing '$' is never
+    misread as a capture-group reference.
+
+    Every key in both is expected to match at least once, and a key that
+    matches nothing throws rather than silently leaving the placeholder in
+    place. The template file and the caller's substitution list are two files
+    that can drift apart without either one's diff showing it: changing one
+    without the other would otherwise leave a substitution silently inert
+    while every install still reported success.
+    #>
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Destination,
         [Parameter(Mandatory)][string]$Relative,
-        [Parameter()][hashtable]$Replace = @{}
+        [Parameter()][hashtable]$Replace = @{},
+        [Parameter()][hashtable]$RegexReplace = @{}
     )
 
     $source = Join-Path $templateDir $Name
@@ -282,8 +299,31 @@ function Copy-TemplateFile {
     }
 
     $content = Get-Content -LiteralPath $source -Raw
+
     foreach ($token in $Replace.GetEnumerator()) {
+        if (-not $content.Contains($token.Key)) {
+            throw (
+                "Template asset '$Name': replacement key '$($token.Key)' matched " +
+                'nothing. The template has likely changed; update the caller.'
+            )
+        }
         $content = $content.Replace($token.Key, $token.Value)
+    }
+
+    foreach ($token in $RegexReplace.GetEnumerator()) {
+        $pattern = $token.Key
+        $value = $token.Value
+        $regex = [regex]::new($pattern)
+
+        if ($regex.Matches($content).Count -eq 0) {
+            throw (
+                "Template asset '$Name': regex replacement pattern '$pattern' matched " +
+                'nothing. The template has likely changed; update the caller.'
+            )
+        }
+
+        $evaluator = [System.Text.RegularExpressions.MatchEvaluator] { param($match) $value }
+        $content = $regex.Replace($content, $evaluator)
     }
 
     Set-ProjectFile -Destination $Destination -Content $content -Relative $Relative
@@ -587,8 +627,6 @@ if (-not $WorkflowsOnly) {
     $configReplacements = @{
         "title: ''"   = "title: '$(ConvertTo-JavaScriptSingleQuoted -Value $Title)'"
         "tagline: ''" = "tagline: '$(ConvertTo-JavaScriptSingleQuoted -Value $Description)'"
-        "routeBasePath: 'docs'" =
-            "routeBasePath: '$(ConvertTo-JavaScriptSingleQuoted -Value $effectiveRouteBasePath)'"
     }
 
     if (-not [string]::IsNullOrWhiteSpace($SiteUrl)) {
@@ -596,10 +634,21 @@ if (-not $WorkflowsOnly) {
             "url: '$(ConvertTo-JavaScriptSingleQuoted -Value $SiteUrl.TrimEnd('/'))'"
     }
 
+    # Regex-keyed rather than a literal "routeBasePath: '<value>'" string, so
+    # the template's own default value is free to change without this
+    # substitution silently going inert. The "existing config wins" block
+    # above already matches routeBasePath with this same pattern, so reading
+    # and writing agree on one shape rather than two that could disagree.
+    $configRegexReplacements = @{
+        "routeBasePath:\s*'[^']*'" =
+            "routeBasePath: '$(ConvertTo-JavaScriptSingleQuoted -Value $effectiveRouteBasePath)'"
+    }
+
     Copy-TemplateFile -Name 'docusaurus.config.ts' `
         -Destination (Join-Path $docsDir 'docusaurus.config.ts') `
         -Relative 'docs/docusaurus.config.ts' `
-        -Replace $configReplacements
+        -Replace $configReplacements `
+        -RegexReplace $configRegexReplacements
 
     Copy-TemplateFile -Name 'sidebar.ts' `
         -Destination (Join-Path $docsDir 'sidebar.ts') `
