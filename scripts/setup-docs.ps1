@@ -8,7 +8,9 @@
 
       README.md                      Created from -Title/-Description if the
                                       project does not already have one
-      docs/                          Docusaurus overlay copied over /template
+      <docs dir>/                    Docusaurus overlay copied over /template.
+                                      'docs/' unless -DocsDirectory says
+                                      otherwise.
         docusaurus.config.ts         Site configuration
         sidebar.ts                   Sidebar configuration
         Dockerfile, .dockerignore    Local preview only
@@ -47,6 +49,28 @@
 
 .PARAMETER ProjectDir
     Target project directory. Defaults to the current directory.
+
+.PARAMETER DocsDirectory
+    Where the Docusaurus overlay is installed, relative to the project.
+    Defaults to 'docs'. Everything docs-build.ps1 copies onto /template lives
+    under here: docusaurus.config.ts, sidebar.ts, the preview Dockerfile, and
+    the authored docs/ and src/pages/ subdirectories -- renaming it does not
+    change what is inside, only where the whole overlay sits in the project.
+
+    A single directory name, not a path: no whitespace, quotes, or path
+    separators. It is written into generated PowerShell, PSD1, and YAML
+    literals, and a nested value could not be rediscovered by a later run
+    that omits this parameter.
+
+    An existing installation is detected, not merely trusted: if the project
+    already has a directory this installer owns (found by the pair of files
+    only it writes together, docusaurus.config.ts and sidebar.ts), a re-run
+    that omits -DocsDirectory adopts that directory rather than reverting to
+    'docs', the same way an existing -RouteBasePath is preserved. Passing
+    -DocsDirectory that names a *different* directory than the one already
+    installed is refused before anything is written -- this installer will not
+    run two overlays or silently move one. Rename the directory yourself
+    (`git mv <old> <new>`) and re-run.
 
 .PARAMETER Title
     Homepage front matter title. Defaults to the project directory name.
@@ -140,6 +164,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter()][string]$ProjectDir = '.',
+    [Parameter()][ValidateNotNullOrEmpty()][string]$DocsDirectory = 'docs',
     [Parameter()][string]$Title,
     [Parameter()][string]$Description = '',
     [Parameter()][string]$SiteUrl = '',
@@ -347,6 +372,38 @@ function Copy-TemplateFile {
     Set-ProjectFile -Destination $Destination -Content $content -Relative $Relative
 }
 
+function Set-TemplateToken {
+    <#
+    .SYNOPSIS
+    Replaces one literal token in already-loaded template content, throwing if
+    the token is not present.
+
+    DocumentationRules.psd1 and docs-ci.yml are templated by direct string
+    manipulation rather than through Copy-TemplateFile -- docs-ci.yml also needs
+    Remove-MarkedBlock applied in between substitutions, and the rules file is
+    built up token by token rather than copied by name -- so neither got
+    Copy-TemplateFile's throw-on-no-match guard for free. This gives them the
+    same guarantee: a key that matches nothing is always a bug, the template has
+    drifted from the caller, and it should fail loudly rather than silently
+    leave the placeholder in place.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Content,
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [Parameter(Mandatory)][string]$FileLabel
+    )
+
+    if (-not $Content.Contains($Key)) {
+        throw (
+            "Template asset '$FileLabel': replacement key '$Key' matched " +
+            'nothing. The template has likely changed; update the caller.'
+        )
+    }
+
+    return $Content.Replace($Key, $Value)
+}
+
 function ConvertTo-YamlSingleQuotedScalar {
     <#
     .SYNOPSIS
@@ -521,6 +578,25 @@ function Resolve-ContainedProjectDirectory {
     re-checked as a second, independent guard, so a separator or encoding
     trick that slips past the first two checks still cannot resolve outside
     -ProjectRoot.
+
+    -DisallowProjectRoot additionally rejects an empty/whitespace value and a
+    value that resolves to -ProjectRoot itself. Without it, an empty string
+    passes every check above -- Join-Path with '' returns the root unchanged,
+    which is exactly what -eq $normalizedRoot allows through -- so a caller
+    could silently install into the project root instead of a subdirectory.
+    Opt-in rather than the default: -ScriptDir/-ConfigDir/-WorkflowDir have
+    always allowed this and changing that now would be a behaviour change
+    unrelated to whatever added this switch.
+
+    All of the above is lexical: GetFullPath collapses '.'/'..' and
+    separators, but it does not follow symlinks or junctions. A path
+    component already sitting on disk as a link to somewhere outside
+    -ProjectRoot would pass every check so far and then receive this
+    installer's real writes at its link target instead. So before returning,
+    every segment of -Value that already exists is walked and checked for a
+    link resolving outside -ProjectRoot's own physical location; a segment
+    that does not exist yet is where the walk stops, since nothing beneath a
+    path that does not exist can itself already be a planted link.
     #>
     param (
         [Parameter(Mandatory)]
@@ -530,8 +606,15 @@ function Resolve-ContainedProjectDirectory {
         [string] $ParameterName,
 
         [Parameter(Mandatory)]
-        [string] $ProjectRoot
+        [string] $ProjectRoot,
+
+        [Parameter()]
+        [switch] $DisallowProjectRoot
     )
+
+    if ($DisallowProjectRoot -and [string]::IsNullOrWhiteSpace($Value)) {
+        throw "-$ParameterName must not be empty."
+    }
 
     if ([IO.Path]::IsPathRooted($Value)) {
         throw "-$ParameterName must be a path relative to the project, not rooted: '$Value'."
@@ -541,8 +624,38 @@ function Resolve-ContainedProjectDirectory {
         throw "-$ParameterName must not contain '..' segments: '$Value'."
     }
 
+    $physicalRootInfo = [IO.Directory]::ResolveLinkTarget($ProjectRoot, $true)
+    $physicalRoot = if ($physicalRootInfo) { $physicalRootInfo.FullName } else { $ProjectRoot }
+    $physicalRoot = $physicalRoot.TrimEnd('\', '/')
+
+    $walked = $ProjectRoot.TrimEnd('\', '/')
+    foreach ($segment in @($Value -split '[\\/]' | Where-Object { $_ -and $_ -ne '.' })) {
+        $walked = Join-Path $walked $segment
+        if (-not (Test-Path -LiteralPath $walked)) {
+            break
+        }
+
+        $walkedItem = Get-Item -LiteralPath $walked -Force
+        if ($walkedItem.LinkType) {
+            $linkTargetInfo = [IO.Directory]::ResolveLinkTarget($walked, $true)
+            $resolvedLinkTarget = if ($linkTargetInfo) { $linkTargetInfo.FullName.TrimEnd('\', '/') } else { $walked }
+
+            if ($resolvedLinkTarget -ne $physicalRoot -and
+                -not $resolvedLinkTarget.StartsWith($physicalRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                throw (
+                    "-$ParameterName resolves through '$walked', a $($walkedItem.LinkType) pointing " +
+                    "outside the project directory: '$Value' -> '$resolvedLinkTarget'."
+                )
+            }
+        }
+    }
+
     $resolved = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $Value))
     $normalizedRoot = $ProjectRoot.TrimEnd('\', '/')
+
+    if ($DisallowProjectRoot -and $resolved -eq $normalizedRoot) {
+        throw "-$ParameterName must not resolve to the project directory itself: '$Value'."
+    }
 
     if ($resolved -ne $normalizedRoot -and
         -not $resolved.StartsWith($normalizedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
@@ -550,6 +663,34 @@ function Resolve-ContainedProjectDirectory {
     }
 
     return $resolved
+}
+
+function Find-InstalledDocsDirectory {
+    <#
+    .SYNOPSIS
+    Finds this installer's existing Docusaurus overlay directory among
+    -ProjectDir's immediate children, if any.
+
+    Identified by the pair of files only this installer writes together:
+    docusaurus.config.ts and sidebar.ts (singular). The singular name matters
+    -- this repository's own site uses the plural sidebars.ts at its root, so
+    running this script against this repository's own checkout cannot
+    false-positive on its own docs/.
+
+    Only immediate children are searched: an overlay this installer owns is
+    never nested more than one level under the project root, so a config file
+    found deeper belongs to something else.
+    #>
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    return @(
+        Get-ChildItem -LiteralPath $ProjectRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object {
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'docusaurus.config.ts') -PathType Leaf) -and
+                (Test-Path -LiteralPath (Join-Path $_.FullName 'sidebar.ts') -PathType Leaf)
+            } |
+            ForEach-Object { $_.Name }
+    )
 }
 
 # -BaseImage is interpolated into a Dockerfile ARG, a PowerShell string, and
@@ -563,11 +704,34 @@ if ([string]::IsNullOrWhiteSpace($BaseImage)) {
     throw '-BaseImage must not be empty.'
 }
 
+# -DocsDirectory is written verbatim into a PSD1 single-quoted literal
+# (Path/GeneratedFiles), a PowerShell single-quoted literal (docs.ps1's
+# Join-Path key), and an unquoted argument on a generated `run:` line in
+# docs-ci.yml/docs-deploy.yml. A quote would break the first two the same way
+# an unescaped -Title once did; whitespace would split the workflow argument
+# into two, since nothing there is quoted for it. Reject rather than escape:
+# a directory name has no reason to need either.
+if ($DocsDirectory -match '[\s''"]') {
+    throw "-DocsDirectory must not contain whitespace or quotes: '$DocsDirectory'."
+}
+
+# A single segment only. Find-InstalledDocsDirectory -- the mechanism a later
+# re-run relies on to rediscover this directory without -DocsDirectory being
+# passed again -- looks only at -ProjectDir's immediate children, by design
+# (an overlay this installer owns is never nested more than one level deep).
+# A multi-segment value like 'sites/documentation' would install correctly
+# once but then go undetected on the very next omitted-parameter run,
+# silently creating a second, default 'docs/' overlay beside it.
+if ($DocsDirectory -match '[\\/]') {
+    throw (
+        "-DocsDirectory must be a single directory name, not a path: '$DocsDirectory'. " +
+        'A nested path cannot be rediscovered by a later run that omits this parameter.'
+    )
+}
+
 $defaultBaseImage = 'ghcr.io/the-running-dev/docs-template:latest'
 
 $projectPath = Resolve-ProjectPath -Path $ProjectDir
-$docsDir = Join-Path $projectPath 'docs'
-$contentDir = Join-Path $docsDir 'docs'
 $scriptTarget = Resolve-ContainedProjectDirectory -Value $ScriptDir -ParameterName 'ScriptDir' -ProjectRoot $projectPath
 $configTarget = Resolve-ContainedProjectDirectory -Value $ConfigDir -ParameterName 'ConfigDir' -ProjectRoot $projectPath
 if ($WorkflowsOnly -and $SkipWorkflow) {
@@ -578,11 +742,102 @@ if ($WorkflowsOnly -and $SkipWorkflow) {
 # segment would otherwise write outside the project entirely.
 $workflowDir = Resolve-ContainedProjectDirectory -Value $WorkflowDir -ParameterName 'WorkflowDir' -ProjectRoot $projectPath
 
+# An existing overlay wins unless -DocsDirectory was passed explicitly -- the
+# same "existing value wins" shape -RouteBasePath uses below, so a plain
+# re-run to pick up an upstream fix cannot move a project's overlay out from
+# under it. -DocsDirectory naming a *different* directory than the one
+# already installed is refused rather than migrated: moving authored content
+# is not something this installer can verify safe without pwsh available to
+# run it here -- the same reasoning that keeps a stale docs/docs/index.md
+# from being auto-migrated further down.
+$docsDirectoryExplicit = $PSBoundParameters.ContainsKey('DocsDirectory')
+
+# @() at the call site, not just around later uses: PowerShell enumerates an
+# array crossing a function's output stream, so a single-match result arrives
+# here as a bare string and a zero-match result as $null -- either would fail
+# .Count under Set-StrictMode. Find-InstalledDocsDirectory's own `return @()`
+# only guarantees array *shape* inside the function; it does not survive
+# unless the caller re-wraps it too.
+$installedDocsDirectories = @(Find-InstalledDocsDirectory -ProjectRoot $projectPath)
+
+if ($docsDirectoryExplicit) {
+    # Case-sensitive: PowerShell's default -ne treats 'documentation' and
+    # 'Documentation' as equal, which would let a case-only respelling slip
+    # past this conflict check entirely. The base image builds on Linux,
+    # where the two are different directories -- comparing case-sensitively
+    # here matches what actually happens on disk in CI, regardless of which
+    # OS the installer itself runs on.
+    $conflicting = @($installedDocsDirectories | Where-Object { $_ -cne $DocsDirectory })
+    if ($conflicting.Count -gt 0) {
+        throw (
+            "This project's documentation is already installed at " +
+            "'$($conflicting -join "', '")', but -DocsDirectory '$DocsDirectory' names a different " +
+            'directory. This installer will not run two overlays or silently move one -- rename it ' +
+            "yourself and re-run, e.g.: git mv $($conflicting[0]) $DocsDirectory"
+        )
+    }
+    $effectiveDocsDirectory = $DocsDirectory
+}
+elseif ($installedDocsDirectories.Count -eq 1) {
+    $effectiveDocsDirectory = $installedDocsDirectories[0]
+    if ($effectiveDocsDirectory -cne $DocsDirectory) {
+        Write-Host (
+            "[SETUP] Keeping this project's documentation directory '$effectiveDocsDirectory' " +
+            "rather than the default '$DocsDirectory'; pass -DocsDirectory to change it."
+        ) -ForegroundColor DarkGray
+    }
+}
+elseif ($installedDocsDirectories.Count -gt 1) {
+    throw (
+        "Found more than one existing documentation directory ('$($installedDocsDirectories -join "', '")'); " +
+        'pass -DocsDirectory to say which one this run applies to.'
+    )
+}
+else {
+    $effectiveDocsDirectory = $DocsDirectory
+}
+
+$docsDir = Resolve-ContainedProjectDirectory -Value $effectiveDocsDirectory -ParameterName 'DocsDirectory' `
+    -ProjectRoot $projectPath -DisallowProjectRoot
+
+foreach ($other in @(
+        @{ Name = 'ScriptDir'; RawValue = $ScriptDir; Path = $scriptTarget }
+        @{ Name = 'ConfigDir'; RawValue = $ConfigDir; Path = $configTarget }
+        @{ Name = 'WorkflowDir'; RawValue = $WorkflowDir; Path = $workflowDir }
+    )) {
+    if ($docsDir -eq $other.Path -or
+        $docsDir.StartsWith($other.Path + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+        $other.Path.StartsWith($docsDir + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw (
+            "-DocsDirectory '$effectiveDocsDirectory' and -$($other.Name) '$($other.RawValue)' " +
+            'must not nest in either direction, or installing one would write into the other.'
+        )
+    }
+}
+
+$contentDir = Join-Path $docsDir 'docs'
+$docsDirectoryRelative = ($effectiveDocsDirectory -replace '\\', '/').Trim('/')
+
+# Not a hard failure: the gate simply never sees this directory, rather than
+# the install itself being wrong. ExcludedSegments is shipped, not generated,
+# so it can only be read from the template this run is about to install, not
+# from anything already in the project.
+$excludedSegments = @((Import-PowerShellDataFile -LiteralPath (Join-Path $templateDir 'DocumentationRules.psd1')).ExcludedSegments)
+$excludedSegmentHit = @($docsDirectoryRelative -split '/') | Where-Object { $_ -in $excludedSegments } | Select-Object -First 1
+if ($excludedSegmentHit) {
+    Write-Warning (
+        "-DocsDirectory '$effectiveDocsDirectory' contains the segment '$excludedSegmentHit', which the " +
+        'shipped documentation gate rules never scan (ExcludedSegments in DocumentationRules.psd1). ' +
+        'Authored content under it will not be checked unless that rule is edited after install.'
+    )
+}
+
 if ([string]::IsNullOrWhiteSpace($Title)) {
     $Title = Split-Path -Leaf $projectPath
 }
 
 Write-Host "[SETUP] Project:  $projectPath" -ForegroundColor Cyan
+Write-Host "[SETUP] Docs:     $docsDirectoryRelative" -ForegroundColor Cyan
 Write-Host "[SETUP] Scripts:  $ScriptDir" -ForegroundColor Cyan
 Write-Host "[SETUP] Config:   $ConfigDir" -ForegroundColor Cyan
 
@@ -665,17 +920,17 @@ if (-not $WorkflowsOnly) {
 
     Copy-TemplateFile -Name 'docusaurus.config.ts' `
         -Destination (Join-Path $docsDir 'docusaurus.config.ts') `
-        -Relative 'docs/docusaurus.config.ts' `
+        -Relative "$docsDirectoryRelative/docusaurus.config.ts" `
         -Replace $configReplacements `
         -RegexReplace $configRegexReplacements
 
     Copy-TemplateFile -Name 'sidebar.ts' `
         -Destination (Join-Path $docsDir 'sidebar.ts') `
-        -Relative 'docs/sidebar.ts'
+        -Relative "$docsDirectoryRelative/sidebar.ts"
 
     Copy-TemplateFile -Name 'Dockerfile' `
         -Destination (Join-Path $docsDir 'Dockerfile') `
-        -Relative 'docs/Dockerfile' `
+        -Relative "$docsDirectoryRelative/Dockerfile" `
         -Replace @{
             "ARG BASE_IMAGE=$defaultBaseImage" = "ARG BASE_IMAGE=$BaseImage"
         }
@@ -684,16 +939,19 @@ if (-not $WorkflowsOnly) {
     # template's own build context.
     Copy-TemplateFile -Name 'dockerignore' `
         -Destination (Join-Path $docsDir '.dockerignore') `
-        -Relative 'docs/.dockerignore'
+        -Relative "$docsDirectoryRelative/.dockerignore"
 
     Copy-TemplateFile -Name 'docs.ps1' `
         -Destination (Join-Path $projectPath 'docs.ps1') `
         -Relative 'docs.ps1' `
         -Replace @{
+            "Join-Path `$root 'docs'" = "Join-Path `$root '$docsDirectoryRelative'"
             "Join-Path `$root 'build' 'ConvertTo-DocumentationHomepage.ps1'" = "Join-Path `$root '$ScriptDir' 'ConvertTo-DocumentationHomepage.ps1'"
             "Join-Path `$root '.config' 'DocumentationRules.psd1'" = "Join-Path `$root '$ConfigDir' 'DocumentationRules.psd1'"
             "[string]`$Tag = 'project-docs'" = "[string]`$Tag = '$(ConvertTo-DockerTagSegment -Value $Title)-docs'"
             "[string]`$BaseImage = '$defaultBaseImage'" = "[string]`$BaseImage = '$BaseImage'"
+            "'docs/docs/index.md'" = "'$docsDirectoryRelative/docs/index.md'"
+            "'docs/src/pages/index.md'" = "'$docsDirectoryRelative/src/pages/index.md'"
         }
 
     # --- Homepage ---------------------------------------------------------------
@@ -742,17 +1000,18 @@ if (-not $WorkflowsOnly) {
         if ($effectiveRouteBasePath.Trim('/') -eq '') {
             # routeBasePath '/': the docs index already IS the site root, so
             # the README renders there directly. One file, one URL.
-            Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
+            Set-ProjectFile -Destination $indexPath -Content $content -Relative "$docsDirectoryRelative/docs/index.md"
         }
         else {
             # Any other routeBasePath: the README becomes a real page route at
-            # the site root, generated into docs/src/pages so it overlays onto
-            # /template/src/pages the same way docs-build.ps1 already expects a
-            # consumer-authored page to -- see its comment on stripping the
-            # image's own src/pages before the overlay, "so a consumer
-            # supplying their own docs/src/pages is not mistaken for the leak."
+            # the site root, generated into <docs dir>/src/pages so it overlays
+            # onto /template/src/pages the same way docs-build.ps1 already
+            # expects a consumer-authored page to -- see its comment on
+            # stripping the image's own src/pages before the overlay, "so a
+            # consumer supplying their own docs/src/pages is not mistaken for
+            # the leak."
             $rootPagePath = Join-Path $docsDir 'src' 'pages' 'index.md'
-            Set-ProjectFile -Destination $rootPagePath -Content $content -Relative 'docs/src/pages/index.md'
+            Set-ProjectFile -Destination $rootPagePath -Content $content -Relative "$docsDirectoryRelative/src/pages/index.md"
 
             # docs/docs/index.md still resolves at /docs/ -- typed, bookmarked,
             # or linked from before this change -- and must keep resolving. Its
@@ -781,7 +1040,7 @@ if (-not $WorkflowsOnly) {
             }
             $landingContent = ($landingLines -join "`n") + "`n"
 
-            Set-ProjectFile -Destination $indexPath -Content $landingContent -Relative 'docs/docs/index.md'
+            Set-ProjectFile -Destination $indexPath -Content $landingContent -Relative "$docsDirectoryRelative/docs/index.md"
         }
     }
 
@@ -798,11 +1057,17 @@ if (-not $WorkflowsOnly) {
         # The rules file carries this project's front matter and site origin, so the
         # gate regenerates the homepage exactly as the preview script does.
         $rules = Get-Content -LiteralPath (Join-Path $templateDir 'DocumentationRules.psd1') -Raw
-        $rules = $rules.Replace("Generator = 'build/ConvertTo-DocumentationHomepage.ps1'", "Generator = '$ScriptDir/ConvertTo-DocumentationHomepage.ps1'")
-        $rules = $rules.Replace("Title = 'Home'", "Title = '$($Title.Replace("'", "''"))'")
-        $rules = $rules.Replace("Description = ''", "Description = '$($Description.Replace("'", "''"))'")
-        $rules = $rules.Replace("SiteUrl = ''", "SiteUrl = '$($SiteUrl.Replace("'", "''"))'")
-        $rules = $rules.Replace("RouteBasePath = '/'", "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'")
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Generator = 'build/ConvertTo-DocumentationHomepage.ps1'" `
+            -Value "Generator = '$ScriptDir/ConvertTo-DocumentationHomepage.ps1'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Title = 'Home'" -Value "Title = '$($Title.Replace("'", "''"))'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Description = ''" -Value "Description = '$($Description.Replace("'", "''"))'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "SiteUrl = ''" -Value "SiteUrl = '$($SiteUrl.Replace("'", "''"))'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "RouteBasePath = '/'" -Value "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'"
 
         # Path follows the same routeBasePath split as the file setup-docs.ps1
         # itself just wrote: the docs index when routeBasePath is '/', the
@@ -810,12 +1075,13 @@ if (-not $WorkflowsOnly) {
         # rather than read back from one, so there is one rule instead of two
         # that could disagree.
         $generatedFileRelativePath = if ($effectiveRouteBasePath.Trim('/') -eq '') {
-            'docs/docs/index.md'
+            "$docsDirectoryRelative/docs/index.md"
         }
         else {
-            'docs/src/pages/index.md'
+            "$docsDirectoryRelative/src/pages/index.md"
         }
-        $rules = $rules.Replace("Path = 'docs/docs/index.md'", "Path = '$generatedFileRelativePath'")
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Path = 'docs/docs/index.md'" -Value "Path = '$generatedFileRelativePath'"
 
         if (-not $generateHomepage) {
             # Drop the GeneratedFiles block entirely rather than leave a check for a
@@ -844,7 +1110,10 @@ if (-not $SkipWorkflow) {
     # requires -SkipWorkflow and hand-adjusting the installed workflow, same as
     # today; this is not a new limitation, only carried over from the file split.
     $docsCiContent = Get-Content -LiteralPath (Join-Path $templateDir 'docs-ci.yml') -Raw
-    $docsCiContent = $docsCiContent.Replace("image: $defaultBaseImage", "image: $BaseImage")
+    $docsCiContent = Set-TemplateToken -Content $docsCiContent -FileLabel 'docs-ci.yml' `
+        -Key "image: $defaultBaseImage" -Value "image: $BaseImage"
+    $docsCiContent = Set-TemplateToken -Content $docsCiContent -FileLabel 'docs-ci.yml' `
+        -Key '-SourceDocs ./docs' -Value "-SourceDocs ./$docsDirectoryRelative"
 
     if ($SkipGate) {
         $docsCiContent = Remove-MarkedBlock -Content $docsCiContent `
@@ -862,6 +1131,7 @@ if (-not $SkipWorkflow) {
         -Relative '.github/workflows/docs-deploy.yml' `
         -Replace @{
             "image: $defaultBaseImage" = "image: $BaseImage"
+            '-SourceDocs ./docs' = "-SourceDocs ./$docsDirectoryRelative"
         }
 
     # Runs unconditionally, not only under -Overwrite: the retired files break
@@ -894,7 +1164,7 @@ if ($skipped.Count -gt 0 -and -not $Overwrite) {
 
 Write-Host ''
 Write-Host '[SETUP] Next steps:' -ForegroundColor Cyan
-Write-Host '  1. Author documentation under docs/docs/' -ForegroundColor White
+Write-Host "  1. Author documentation under $docsDirectoryRelative/docs/" -ForegroundColor White
 Write-Host '  2. Preview locally:  ./docs.ps1' -ForegroundColor White
 if (-not $SkipGate) {
     Write-Host "  3. Check it:         ./$ScriptDir/Test-Documentation.ps1" -ForegroundColor White

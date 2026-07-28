@@ -31,6 +31,21 @@ Re-run with `-Overwrite` to pick up upstream fixes. `-BaseImage` pins a specific
 image tag instead of tracking `:latest`, and is written to all four places an
 install references the image.
 
+By default the Docusaurus overlay lives at `docs/`. Pass `-DocsDirectory
+documentation` (a single directory name — no spaces, quotes, or nested paths)
+to put it somewhere else — every generated path, command, gate rule, and
+workflow follows that choice, so nothing needs hand-adjusting afterward. A
+re-run that omits
+`-DocsDirectory` detects and keeps whichever directory is already installed,
+the same way an existing `-RouteBasePath` is preserved; pointing it at a
+_different_ directory than the one already installed is refused, not migrated
+— rename the directory yourself (`git mv docs documentation`) and re-run. The
+installer owns whichever directory you choose: do not reproduce its overlay
+behavior (the README-to-root generation, the `src/pages` strip-then-overlay,
+the workflow build step) in a hand-written workflow of your own — re-run the
+installer instead, so a later template fix reaches your project the same way
+it reaches every other consumer.
+
 Other commands the image exposes:
 
 | Command                    | Purpose                                                  |
@@ -45,14 +60,16 @@ drive Docker themselves, so they only run on a host — not inside the image.
 
 ## What gets installed
 
+`<docs dir>` below is `docs/` unless `-DocsDirectory` says otherwise.
+
 | Path                                        | Notes                                                      |
 | ------------------------------------------- | ---------------------------------------------------------- |
-| `docs/docs/**`                              | Authored Markdown. Add pages here.                         |
-| `docs/docs/index.md`                        | **Generated from `README.md`. Do not edit.**               |
-| `docs/docusaurus.config.ts`                 | Site title, URL, navbar, broken-link policy.               |
-| `docs/sidebar.ts`                           | Sidebar structure. Note the singular filename.             |
-| `docs/Dockerfile`                           | `FROM` the base image, `COPY . .` to overlay this folder.  |
-| `docs/.dockerignore`                        | Keeps the build context to the overlay.                    |
+| `<docs dir>/docs/**`                        | Authored Markdown. Add pages here.                         |
+| `<docs dir>/docs/index.md`                  | **Generated from `README.md`. Do not edit.**               |
+| `<docs dir>/docusaurus.config.ts`           | Site title, URL, navbar, broken-link policy.               |
+| `<docs dir>/sidebar.ts`                     | Sidebar structure. Note the singular filename.             |
+| `<docs dir>/Dockerfile`                     | `FROM` the base image, `COPY . .` to overlay this folder.  |
+| `<docs dir>/.dockerignore`                  | Keeps the build context to the overlay.                    |
 | `docs.ps1`                                  | Local preview entry point.                                 |
 | `build/ConvertTo-DocumentationHomepage.ps1` | README to homepage generator.                              |
 | `build/Test-Documentation.ps1`              | The documentation gate.                                    |
@@ -116,6 +133,10 @@ docker run --rm -v "$PWD:/work" -w /work \
   ghcr.io/the-running-dev/docs-template:latest \
   Invoke-DocsBuild -SourceDocs /work/docs -OutputPath /work/artifacts/docs
 ```
+
+`-SourceDocs` must point at whatever `-DocsDirectory` the project installed
+with — the generated workflows already pass the matching value; this is only
+for reproducing their build by hand.
 
 Note the missing `--user` here, unlike the install command above. `Invoke-DocsBuild`
 overlays your `docs/` onto the image's root-owned `/template` before building, so a
@@ -198,18 +219,21 @@ page at `/`.
 Pass `-RouteBasePath docs` to serve under `/docs` instead. Two things to know if
 you do:
 
-- **The theme links to `/`.** Its 404 page and the docs navbar both do, so with
-  nothing at the root Docusaurus reports two broken links your project never
-  wrote. Harmless under the shipped `onBrokenLinks: 'warn'`, a failed build if
-  you raise it to `'throw'`. You can supply your own root by adding
-  `docs/src/pages/index.md`, which the overlay copies into place.
+- **`/` still resolves — the installer generates it, you do not have to.** The
+  README is written to `docs/src/pages/index.md` as a real page route, so the
+  theme's 404 page and docs navbar links to `/` both resolve. `docs/docs/index.md`
+  keeps resolving too, as a minimal landing page rather than a second copy of
+  the README, so `/docs/` is never left without a page. Neither file needs
+  hand-authoring; both come from the same install.
 - **The homepage generator rewrites the published site origin to `/`**, which
-  assumes serving from the root, so under `/docs` those rewritten links do not
-  land on the generated homepage.
+  is exactly where it now renders under this shape, so the rewritten links land
+  correctly on the generated page.
 
-Neither applies on the default. Re-running the installer with `-Overwrite` will
-**not** move an existing project: it keeps whatever `routeBasePath` your config
-already has, and says so, unless you pass `-RouteBasePath` explicitly.
+Neither distinction applies on the default (`routeBasePath: '/'`), where the
+docs index already _is_ the root and there is only one generated file. Re-running
+the installer with `-Overwrite` will **not** move an existing project: it keeps
+whatever `routeBasePath` your config already has, and says so, unless you pass
+`-RouteBasePath` explicitly.
 
 The template's own pages are not part of your site. Earlier images compiled
 `src/pages` from the image into every consumer build, so sites inherited `/`,

@@ -209,3 +209,227 @@ Describe 'setup-docs.ps1 root page destination' {
         (Get-Content -LiteralPath $indexPath -Raw) | Should -Not -Match 'Old README-derived content\.'
     }
 }
+
+Describe 'setup-docs.ps1 -DocsDirectory' {
+    It 'installs the full overlay under a custom directory, and creates no docs/' {
+        $projectDir = Join-Path $TestDrive 'custom-dir'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Custom Dir Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+
+        Test-Path -LiteralPath (Join-Path $projectDir 'documentation' 'docusaurus.config.ts') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $projectDir 'documentation' 'sidebar.ts') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $projectDir 'documentation' 'docs' 'index.md') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $projectDir 'docs') | Should -BeFalse
+    }
+
+    It 'reproduces the default docs/ layout when -DocsDirectory is omitted' {
+        $projectDir = Join-Path $TestDrive 'default-dir'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Default Dir Project' -SkipWorkflow -SkipGate
+
+        Test-Path -LiteralPath (Join-Path $projectDir 'docs' 'docusaurus.config.ts') | Should -BeTrue
+    }
+
+    It 'adopts an existing custom directory on re-run when -DocsDirectory is omitted' {
+        $projectDir = Join-Path $TestDrive 'adopt-dir'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Adopt Dir Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+        & $script:setupScript -ProjectDir $projectDir -Title 'Adopt Dir Project Updated' -Overwrite `
+            -SkipWorkflow -SkipGate
+
+        $config = Get-Content -LiteralPath (Join-Path $projectDir 'documentation' 'docusaurus.config.ts') -Raw
+        $config | Should -Match "title: 'Adopt Dir Project Updated'"
+        Test-Path -LiteralPath (Join-Path $projectDir 'docs') | Should -BeFalse
+    }
+
+    It 'refuses to move an existing custom directory when -DocsDirectory names a different one' {
+        $projectDir = Join-Path $TestDrive 'refuse-dir'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Refuse Dir Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Refuse Dir Project' -DocsDirectory 'other-docs' `
+                -Overwrite -SkipWorkflow -SkipGate
+        } | Should -Throw '*names a different*'
+
+        Test-Path -LiteralPath (Join-Path $projectDir 'other-docs') | Should -BeFalse
+        Test-Path -LiteralPath (Join-Path $projectDir 'documentation' 'docusaurus.config.ts') | Should -BeTrue
+    }
+
+    It 'rejects a rooted -DocsDirectory before writing anything' {
+        # A rooted value always contains a path separator, so the
+        # single-directory-name check (which runs first) catches it before
+        # Resolve-ContainedProjectDirectory's own rootedness check ever
+        # would -- still rejected, just by the earlier, more specific gate.
+        $projectDir = Join-Path $TestDrive 'invalid-rooted'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory $TestDrive `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*single directory name*'
+        Test-Path -LiteralPath (Join-Path $projectDir 'docusaurus.config.ts') | Should -BeFalse
+    }
+
+    It "rejects a '..' segment in -DocsDirectory before writing anything" {
+        # Same reasoning as the rooted case: '../evil' contains a path
+        # separator, so the single-directory-name check catches it first.
+        $projectDir = Join-Path $TestDrive 'invalid-traversal'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory '../evil' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*single directory name*'
+    }
+
+    It 'rejects a whitespace-only -DocsDirectory before writing anything' {
+        # Whitespace is rejected by the whitespace-or-quotes check before
+        # Resolve-ContainedProjectDirectory's own empty-value check runs.
+        $projectDir = Join-Path $TestDrive 'invalid-whitespace'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory '   ' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*must not contain whitespace or quotes*'
+    }
+
+    It 'rejects -DocsDirectory resolving to the project directory itself' {
+        $projectDir = Join-Path $TestDrive 'invalid-root'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory '.' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*project directory itself*'
+    }
+
+    It 'rejects -DocsDirectory that nests with -ScriptDir' {
+        $projectDir = Join-Path $TestDrive 'invalid-nesting'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'build' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*must not nest*'
+    }
+
+    It 'rejects a -DocsDirectory that is a symlink resolving outside the project' {
+        # Lexical containment (GetFullPath plus a prefix check) does not
+        # follow links, so a pre-planted symlink at the docs directory's own
+        # path would otherwise pass validation and then receive this
+        # installer's real writes at the external target.
+        $projectDir = Join-Path $TestDrive 'symlink-escape'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        $externalTarget = Join-Path $TestDrive 'symlink-escape-external'
+        New-Item -ItemType Directory -Path $externalTarget -Force | Out-Null
+        New-Item -ItemType SymbolicLink -Path (Join-Path $projectDir 'documentation') -Target $externalTarget | Out-Null
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'documentation' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*pointing outside the project directory*'
+
+        Test-Path -LiteralPath (Join-Path $externalTarget 'docusaurus.config.ts') | Should -BeFalse
+    }
+
+    It 'accepts a -DocsDirectory that is a symlink resolving inside the project' {
+        # A link is not inherently unsafe -- only one that escapes the
+        # project. This is the negative case for the check above, confirming
+        # it does not also reject an internal symlink a project legitimately
+        # set up itself.
+        $projectDir = Join-Path $TestDrive 'symlink-internal'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        $internalTarget = Join-Path $projectDir 'actual-docs'
+        New-Item -ItemType Directory -Path $internalTarget -Force | Out-Null
+        New-Item -ItemType SymbolicLink -Path (Join-Path $projectDir 'documentation') -Target $internalTarget | Out-Null
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Symlink Internal' -DocsDirectory 'documentation' `
+                -SkipWorkflow -SkipGate
+        } | Should -Not -Throw
+
+        Test-Path -LiteralPath (Join-Path $internalTarget 'docusaurus.config.ts') | Should -BeTrue
+    }
+
+    It 'rejects a -DocsDirectory containing whitespace' {
+        $projectDir = Join-Path $TestDrive 'invalid-whitespace-name'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'project docs' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*must not contain whitespace or quotes*'
+    }
+
+    It 'rejects a -DocsDirectory containing a quote' {
+        $projectDir = Join-Path $TestDrive 'invalid-quote-name'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory "project's-docs" `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*must not contain whitespace or quotes*'
+    }
+
+    It 'rejects a multi-segment -DocsDirectory' {
+        $projectDir = Join-Path $TestDrive 'invalid-multi-segment'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'sites/documentation' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*single directory name*'
+    }
+
+    It 'treats a case-only respelling of an installed directory as a conflict, not a match' {
+        $projectDir = Join-Path $TestDrive 'case-conflict'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Case Conflict Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Case Conflict Project' -DocsDirectory 'Documentation' `
+                -Overwrite -SkipWorkflow -SkipGate
+        } | Should -Throw '*names a different*'
+    }
+
+    It 'warns, but does not fail, when -DocsDirectory collides with an ExcludedSegments entry' {
+        $projectDir = Join-Path $TestDrive 'excluded-segment'
+        $output = & $script:setupScript -ProjectDir $projectDir -Title 'Excluded Segment Project' `
+            -DocsDirectory 'artifacts' -SkipWorkflow -SkipGate 3>&1
+        ($output | Out-String) | Should -Match 'ExcludedSegments'
+        Test-Path -LiteralPath (Join-Path $projectDir 'artifacts' 'docusaurus.config.ts') | Should -BeTrue
+    }
+
+    It 'writes both root-page destinations under a custom directory for both routeBasePath values' {
+        $rootSlash = Join-Path $TestDrive 'custom-dir-route-slash'
+        & $script:setupScript -ProjectDir $rootSlash -Title 'Route Slash' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+        Test-Path -LiteralPath (Join-Path $rootSlash 'documentation' 'docs' 'index.md') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $rootSlash 'documentation' 'src' 'pages' 'index.md') | Should -BeFalse
+
+        $customRoute = Join-Path $TestDrive 'custom-dir-route-docs'
+        & $script:setupScript -ProjectDir $customRoute -Title 'Route Docs' -DocsDirectory 'documentation' `
+            -RouteBasePath 'docs' -SkipWorkflow -SkipGate
+        Test-Path -LiteralPath (Join-Path $customRoute 'documentation' 'src' 'pages' 'index.md') | Should -BeTrue
+    }
+
+    It 'points the installed GeneratedFiles Path into the selected directory' {
+        $projectDir = Join-Path $TestDrive 'custom-dir-rules'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Rules Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow
+
+        $rules = Import-PowerShellDataFile -LiteralPath (Join-Path $projectDir '.config' 'DocumentationRules.psd1')
+        $rules.GeneratedFiles[0].Path | Should -Be 'documentation/docs/index.md'
+    }
+
+    It 'substitutes -SourceDocs in both generated workflows and leaves no ./docs behind' {
+        $projectDir = Join-Path $TestDrive 'custom-dir-workflows'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Workflow Project' -DocsDirectory 'documentation' `
+            -SkipGate
+
+        $ci = Get-Content -LiteralPath (Join-Path $projectDir '.github' 'workflows' 'docs-ci.yml') -Raw
+        $deploy = Get-Content -LiteralPath (Join-Path $projectDir '.github' 'workflows' 'docs-deploy.yml') -Raw
+
+        $ci | Should -Match '-SourceDocs \./documentation'
+        $ci | Should -Not -Match '-SourceDocs \./docs '
+        $deploy | Should -Match '-SourceDocs \./documentation'
+        $deploy | Should -Not -Match '-SourceDocs \./docs '
+    }
+
+    It 'is idempotent under -Overwrite for a custom directory' {
+        $projectDir = Join-Path $TestDrive 'custom-dir-idempotent'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Idempotent Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Idempotent Project' -DocsDirectory 'documentation' `
+                -Overwrite -SkipWorkflow -SkipGate
+        } | Should -Not -Throw
+
+        Test-Path -LiteralPath (Join-Path $projectDir 'documentation' 'docusaurus.config.ts') | Should -BeTrue
+    }
+}
