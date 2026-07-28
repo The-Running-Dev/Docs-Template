@@ -29,16 +29,22 @@ up upstream fixes.
 The single most important thing to understand is that **the template and a
 consumer use different directory shapes**.
 
-|                    | Template (this repository)         | Consumer project            |
-| ------------------ | ---------------------------------- | --------------------------- |
-| Site configuration | `docusaurus.config.ts` at the root | `docs/docusaurus.config.ts` |
-| Sidebar            | `sidebars.ts` at the root          | `docs/sidebar.ts`           |
-| Authored Markdown  | `docs/**`                          | `docs/docs/**`              |
+|                    | Template (this repository)         | Consumer project                  |
+| ------------------ | ---------------------------------- | --------------------------------- |
+| Site configuration | `docusaurus.config.ts` at the root | `<docs dir>/docusaurus.config.ts` |
+| Sidebar            | `sidebars.ts` at the root          | `<docs dir>/sidebar.ts`           |
+| Authored Markdown  | `docs/**`                          | `<docs dir>/docs/**`              |
 
-A consumer's `docs/` is not a content directory — it is a **self-contained
-overlay** that gets copied over `/template` inside the published base image. That
-is why it carries its own config, its own sidebar, and a nested `docs/` for the
-actual pages.
+`<docs dir>` is `docs/` unless the installer's `-DocsDirectory` parameter says
+otherwise — see [Installing the Docs System](../getting-started/installing-the-docs-system.md).
+Renaming it moves the whole overlay; the nested `docs/` inside it stays fixed,
+since that is Docusaurus's own default content path once inside the image, not
+something this repository names.
+
+A consumer's docs directory is not a content directory — it is a
+**self-contained overlay** that gets copied over `/template` inside the
+published base image. That is why it carries its own config, its own sidebar,
+and a nested `docs/` for the actual pages.
 
 ```mermaid
 graph LR
@@ -105,7 +111,8 @@ graph TD
 ### `scripts/setup-docs.ps1`
 
 The installer. Lives only in the template and is never copied into a project. It
-resolves the target directory, validates `-ScriptDir` and `-ConfigDir`, copies
+resolves the target directory, validates `-DocsDirectory`, `-ScriptDir`, and
+`-ConfigDir`, copies
 each asset from `scripts/template/`, rewrites paths inside the copies when those
 directories are non-default, and prints a created/replaced/skipped summary.
 
@@ -119,8 +126,8 @@ of this site's own build. They exist to be copied.
 
 | Asset                                 | Installed as         | Purpose                     |
 | ------------------------------------- | -------------------- | --------------------------- |
-| `docusaurus.config.ts`, `sidebar.ts`  | `docs/`              | Site configuration seeds    |
-| `Dockerfile`, `dockerignore`          | `docs/`              | Local preview overlay image |
+| `docusaurus.config.ts`, `sidebar.ts`  | `<DocsDirectory>/`   | Site configuration seeds    |
+| `Dockerfile`, `dockerignore`          | `<DocsDirectory>/`   | Local preview overlay image |
 | `docs.ps1`                            | project root         | Preview entry point         |
 | `ConvertTo-DocumentationHomepage.ps1` | `<ScriptDir>/`       | README to homepage          |
 | `Test-Documentation.ps1`              | `<ScriptDir>/`       | Quality gate                |

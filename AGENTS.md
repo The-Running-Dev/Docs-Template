@@ -88,11 +88,15 @@ docker run --rm \
   root-owned files. The container's own processes still run as root either
   way; this only affects the UID stamped on what gets written.
 - **`Invoke-SetupDocs` takes the same parameters as `scripts/setup-docs.ps1`**:
-  `-ProjectDir` (default `.`), `-Title`, `-Description`, `-SiteUrl`,
-  `-ScriptDir` (default `build`), `-ConfigDir` (default `.config`),
-  `-NoHomepage`, `-SkipWorkflow`, `-SkipGate`, `-Overwrite`. In practice
-  `-Title` and `-SiteUrl` are the ones worth setting explicitly; everything
-  else has a sane default.
+  `-ProjectDir` (default `.`), `-DocsDirectory` (default `docs`), `-Title`,
+  `-Description`, `-SiteUrl`, `-ScriptDir` (default `build`), `-ConfigDir`
+  (default `.config`), `-NoHomepage`, `-SkipWorkflow`, `-SkipGate`,
+  `-Overwrite`. In practice `-Title` and `-SiteUrl` are the ones worth setting
+  explicitly; everything else has a sane default. `-DocsDirectory` matters only
+  for a repository that wants its documentation project under a name other
+  than `docs/`, such as `documentation/`; a re-run that omits it adopts
+  whatever is already installed, and pointing it at a _different_ existing
+  directory is refused rather than silently moving one.
 - **`-ProjectDir` must point at the mount.** It defaults to `.`, and the
   image's `WORKDIR` is `/template`. Omit both the mount and `-ProjectDir` and
   the command refuses to run rather than installing into the template image
