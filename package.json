@@ -76,6 +76,7 @@
     "api:dev": "pnpm --dir api dev",
     "api:start": "pnpm --dir api start",
     "dev:with-api": "concurrently \"pnpm api:dev\" \"pnpm dev\"",
+    "test:api": "pnpm --dir api install && pnpm --dir api test",
     "// SETUP": "",
     "prepare": "husky"
   },

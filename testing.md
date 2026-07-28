@@ -29,9 +29,10 @@ Usage tips
 - Coverage: pnpm test:coverage (or pnpm test:ci).
 - Components-only: pnpm test:components.
 - Full local gate: pnpm test:all or pnpm quality before PR.
+- API tests: pnpm test:api. api/ is a separate pnpm workspace with its own lockfile and dependencies, excluded from the root test run; this installs and runs its tests via its own package.json.
 
 Notes
 
 - If you see Rollup optional-deps errors when running tests, use Node 18–20. Node 23 can cause rollup native binary resolution issues.
-- Coverage thresholds are configured in vitest.config.ts (lines: 75, functions: 70, branches: 60, statements: 75).
+- Coverage thresholds are configured in vitest.config.ts (see the coverage.thresholds block) — the config is the source of truth; this document deliberately does not restate the numbers.
   ────────────────────────────────────────────────

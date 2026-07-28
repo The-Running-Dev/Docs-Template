@@ -102,7 +102,7 @@ See docs at `docs/guides/projects-manager.md` for details.
 
 ## 📊 Coverage Reports
 
-- Local: `pnpm test:components:cov` generates HTML + LCOV in `coverage/` (open `coverage/index.html`).
+- Local: `pnpm test:components` generates HTML + LCOV in `coverage/` (open `coverage/index.html`).
 - CI: GitHub Actions publishes a `coverage-report` artifact. If Codecov is configured (CODECOV_TOKEN), view coverage via the badge above.
 
 ## 📖 Documentation

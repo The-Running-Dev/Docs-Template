@@ -8,10 +8,14 @@ This TODO is based on the current repository audit (code, docs, tests, API packa
 
 ### 1) Fix root test failures (Vitest/jsdom/localStorage)
 
-- [ ] Reproduce and categorize all failing test files.
-- [ ] Fix test environment setup for storage APIs so `localStorage.getItem/setItem/clear` are available and stable in tests.
-- [ ] Resolve the `--localstorage-file` warning source and remove test runtime noise.
-- [ ] Validate by running `pnpm test:run` with zero failing tests.
+- [x] Reproduce and categorize all failing test files. All 9 failures were
+      `api/` test files failing to resolve imports (`fastify`, `typeorm`,
+      `jsonwebtoken`, `node-cron`, `@octokit/rest`) — `api/` is a separate
+      pnpm workspace whose deps a root `pnpm install` never installs; no
+      storage-related failures were among them.
+- [x] Fix test environment setup for storage APIs so `localStorage.getItem/setItem/clear` are available and stable in tests. Already handled in `vitest.setup.ts` (a global mock, cleared between tests); verified no storage-related TypeErrors in the current passing run.
+- [x] Resolve the `--localstorage-file` warning source and remove test runtime noise. No such warning appears in the current test output.
+- [x] Validate by running `pnpm test:run` with zero failing tests. `vitest.config.ts` now excludes `api/**` from root discovery (its dependencies were never installable from root); `pnpm run test:api` runs it via its own lockfile instead.
 
 Acceptance criteria:
 
@@ -20,8 +24,8 @@ Acceptance criteria:
 
 ### 2) Align test documentation with actual configuration
 
-- [ ] Update testing documentation to match real coverage thresholds.
-- [ ] Decide target thresholds (current config vs desired policy) and enforce one source of truth.
+- [x] Update testing documentation to match real coverage thresholds. `testing.md` now points at `vitest.config.ts` as the source of truth instead of restating numbers, matching the fix already applied to `AGENTS.md`.
+- [ ] Decide target thresholds (current config vs desired policy). Still open — see P1.5. This PR does not raise or lower the numbers, only removes the doc drift around them.
 
 Confirmed drift (2026-07-26) — three sources, two different answers:
 
@@ -32,14 +36,14 @@ Confirmed drift (2026-07-26) — three sources, two different answers:
 | `AGENTS.md` (Testing Guidelines)  | 75    | 70        | 60       | 75         |
 
 Both docs claimed the same wrong numbers, so this reads as config having been
-lowered without the docs following. `AGENTS.md` has since been changed to point
-at the config instead of restating values; `testing.md:36` still asserts the
-wrong ones. Decide whether to raise config to the documented values or correct
-the docs — see also P1.5, which targets 80 across the board.
+lowered without the docs following. Both `AGENTS.md` and `testing.md` now point
+at the config instead of restating values, so this drift cannot recur. Whether
+to raise the config itself is still open — see P1.5, which targets 80 across
+the board.
 
 Acceptance criteria:
 
-- `testing.md`, `AGENTS.md`, and `vitest.config.ts` state identical thresholds.
+- `vitest.config.ts` is the only place that states numeric coverage thresholds; `testing.md` and `AGENTS.md` both point at it instead of restating values.
 
 ## P1 - Documentation and Workflow Consistency
 
@@ -377,9 +381,12 @@ Acceptance criteria:
   practiced)? Every other item in P1.10 follows from this one answer. No
   default is set here on purpose: both directions are defensible and the cost
   falls on whoever maintains the tree.
-- **P0.2 / P1.5 — coverage thresholds.** Raise config to the documented
-  75/70/60/75, go straight to the 80/80/80/80 target in P1.5, or correct the
-  docs down to the actual 55/55/45/55.
+- **P0.2 / P1.5 — coverage thresholds.** The docs-drift half of P0.2 is closed
+  — `testing.md` and `AGENTS.md` now point at `vitest.config.ts` instead of
+  restating numbers, so they cannot state a wrong value again. What remains
+  open is the config's actual value: raise it to the previously-documented
+  75/70/60/75, go straight to the 80/80/80/80 target in P1.5, or leave it at
+  the current 55/55/45/55.
 
 ## Notes
 
