@@ -151,6 +151,29 @@ Describe 'setup-docs.ps1 root page destination' {
         $content | Should -Match '\[View the documentation\]\(/docs/\)'
     }
 
+    It 'rewrites absolute README links against the site root, not the docs base' {
+        # -SiteUrl is the site ORIGIN, so an absolute link resolves against '/'.
+        # Rewriting it to the docs base instead double-prefixes any link that
+        # already points into the docs -- the shape every consumer README uses
+        # once its links are absolute so they also work on the code host.
+        $projectDir = Join-Path $TestDrive 'siteurl-rewrite'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $projectDir 'README.md') -NoNewline -Value @'
+# Site Url Project
+
+- [Vision](https://example.com/docs/engine/vision)
+- [Home](https://example.com/)
+'@
+
+        & $script:setupScript -ProjectDir $projectDir -Title 'Site Url Project' -RouteBasePath 'docs' `
+            -SiteUrl 'https://example.com/' -SkipWorkflow -SkipGate
+
+        $content = Get-Content -LiteralPath (Join-Path $projectDir 'docs' 'src' 'pages' 'index.md') -Raw
+        $content | Should -Match '\(/docs/engine/vision\)'
+        $content | Should -Not -Match '/docs/docs/'
+        $content | Should -Match '\(/\)'
+    }
+
     It 'writes a landing page, not the README, to docs/docs/index.md when routeBasePath is not /' {
         $projectDir = Join-Path $TestDrive 'custom-landing'
         New-Item -ItemType Directory -Path $projectDir -Force | Out-Null

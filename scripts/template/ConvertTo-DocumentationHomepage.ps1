@@ -144,12 +144,16 @@ if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
 # otherwise has no path into the docs at all.
 $isRootPage = $RouteBasePath.Trim('/') -ne ''
 
-# Trailing slash on both sides so '/docs' and '/docs/' behave the same and the
-# result never doubles a separator. Computed unconditionally -- needed for the
-# root-page docs link below regardless of whether -SiteUrl was given, not only
-# for the absolute-link rewrite.
-$target = '/' + $RouteBasePath.Trim('/')
-if ($target -ne '/') { $target += '/' }
+# Where the docs live, with a trailing slash so '/docs' and '/docs/' behave the
+# same and the result never doubles a separator. Used only for the root-page
+# docs link below, which is why it is computed even when -SiteUrl is empty.
+#
+# Deliberately NOT the -SiteUrl rewrite target: -SiteUrl is the site origin, so
+# an absolute link resolves against the site root, not against the docs base.
+# Rewriting to $docsTarget instead would prefix every link that already points
+# into the docs a second time -- 'https://site/docs/guide' -> '/docs/docs/guide'.
+$docsTarget = '/' + $RouteBasePath.Trim('/')
+if ($docsTarget -ne '/') { $docsTarget += '/' }
 
 $frontMatterLines = @(
     '---'
@@ -174,11 +178,11 @@ $body = if ([string]::IsNullOrWhiteSpace($SiteUrl)) {
     $readme
 }
 else {
-    $readme.Replace($SiteUrl, $target)
+    $readme.Replace($SiteUrl, '/')
 }
 
 if ($isRootPage) {
-    $body = $body.TrimEnd("`n") + "`n`n[View the documentation]($target)`n"
+    $body = $body.TrimEnd("`n") + "`n`n[View the documentation]($docsTarget)`n"
 }
 
 $document = $frontMatter + "`n" + $body
