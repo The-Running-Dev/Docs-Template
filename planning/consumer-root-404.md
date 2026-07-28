@@ -227,18 +227,41 @@ on `'docs'` at all. Now that setup substitutes it, the file reads as though
 harmless: it is what made both the downstream report and the first pass of this
 plan reason about the wrong default.
 
-- [ ] Change the literal to `routeBasePath: '/'`.
-- [ ] **In the same commit**, change the substitution key in `setup-docs.ps1`
-      (`$configReplacements`, ~line 588). It matches the exact string
-      `routeBasePath: 'docs'`, and `Copy-TemplateFile` applies it with
-      `String.Replace` (line 286), which **returns the string unchanged when the
-      key is absent** — no error, no warning. Change one without the other and
-      `-RouteBasePath` silently stops working while every install still looks
-      successful.
-- [ ] Better: replace the literal key with a regex substitution on
-      `routeBasePath:\s*'[^']*'`, so the two can never drift apart again. The
-      "existing config wins" guard above already uses that exact pattern, so this
-      makes one shape serve both.
+**Decided:** make the substitution regex-based *first*, then change the literal.
+Not "same commit, carefully" — remove the coupling so it cannot recur.
+
+The hazard is that the substitution key in `setup-docs.ps1` (`$configReplacements`,
+~line 588) is the exact string `routeBasePath: 'docs'`, and `Copy-TemplateFile`
+applies it with `String.Replace` (line 286), which **returns the string unchanged
+when the key is absent** — no error, no warning. Change the template literal
+alone and `-RouteBasePath` silently stops working while every install still
+reports success. A literal key that has to match a literal in another file is a
+coupling nobody can see from either side.
+
+- [ ] Replace the `routeBasePath` entry with a regex substitution on
+      `routeBasePath:\s*'[^']*'`, so the key matches whatever the template
+      currently says. The "existing config wins" guard above already uses that
+      exact pattern, so one shape serves both read and write.
+- [ ] Only then change the template literal to `routeBasePath: '/'`. With the
+      regex in place this is a content change that cannot break the mechanism.
+- [ ] Escape `$` in the replacement value — `[regex]::Replace` treats it as a
+      capture reference, unlike `String.Replace`. A `routeBasePath` will not
+      normally contain one, but the helper should not depend on that.
+
+**Implementation note.** `Copy-TemplateFile` applies every `-Replace` entry
+through `String.Replace`, so a regex entry needs somewhere to live: either a
+second parameter (`-RegexReplace`) alongside the literal hashtable, or handling
+`routeBasePath` outside the helper. The first keeps one call site and is the
+smaller change.
+
+**Worth fixing the class, not just this case.** `title: ''` and `tagline: ''` are
+literal keys with exactly the same failure mode — edit either placeholder in the
+template and the substitution silently stops applying. Cheap systemic guard:
+
+- [ ] Have `Copy-TemplateFile` warn (or throw) when a replacement key is not
+      found in the content. Every one of these keys is expected to match exactly
+      once; a miss is always a bug, never a valid state. This turns a whole class
+      of silent breakage loud, and would have caught this one at authoring time.
 
 ### On adding an `index.md` under docs
 
