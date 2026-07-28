@@ -67,9 +67,10 @@ param(
     [string]$SiteUrl = '',
 
     # Where documentation is served, matching routeBasePath in
-    # docusaurus.config.ts. Absolute links to -SiteUrl are rewritten to this, so
-    # a project serving under '/docs' gets links that resolve there instead of
-    # at a site root that has no page.
+    # docusaurus.config.ts. This is NOT the -SiteUrl rewrite target -- that is
+    # always '/', since an absolute link resolves against the site root. Using
+    # this value instead double-prefixes any link already pointing into the
+    # docs; see the note beside $docsTarget below.
     #
     # Also decides what this script is generating, entirely from this one
     # value: '/' means the result is the docs index; anything else means the
