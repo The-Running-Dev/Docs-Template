@@ -370,6 +370,92 @@ function New-DocumentationFinding {
     }
 }
 
+function Read-MarkdownInlineLink {
+    <#
+    .SYNOPSIS
+        Extract the destination of every inline Markdown link on one line.
+
+    .DESCRIPTION
+        A scanner rather than a regular expression, because the bare destination
+        form admits parentheses nested to arbitrary depth and that is not a
+        regular language. The prior expression handled one level -- '(bar)' but
+        not '((bar))' -- and a destination it could not match was skipped
+        silently rather than reported, which looks identical to a check that
+        passed.
+
+        Handles both destination forms Markdown defines. An angle-bracket
+        destination runs to its closing '>' and is the only way to write a
+        target containing a space. A bare destination runs until whitespace or
+        until the ')' that closes the link, tracking depth so an interior pair
+        is consumed rather than mistaken for the close.
+
+        Returns the destination without its angle brackets, and a 1-based column
+        pointing at the destination itself rather than at the link.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Line
+    )
+
+    $found = @()
+
+    foreach ($start in [regex]::Matches($Line, '!?\[[^\]]*\]\(')) {
+        $i = $start.Index + $start.Length
+        while ($i -lt $Line.Length -and [char]::IsWhiteSpace($Line[$i])) { $i++ }
+        if ($i -ge $Line.Length) { continue }
+
+        $valueStart = $i
+        $value = $null
+
+        if ($Line[$i] -eq '<') {
+            $close = $Line.IndexOf('>', $i + 1)
+            if ($close -lt 0) { continue }          # unterminated; not a link
+            $valueStart = $i + 1
+            $value = $Line.Substring($valueStart, $close - $valueStart)
+            $i = $close + 1
+        }
+        else {
+            $depth = 0
+            while ($i -lt $Line.Length) {
+                $char = $Line[$i]
+                if ([char]::IsWhiteSpace($char)) { break }
+                if ($char -eq '(') { $depth++ }
+                elseif ($char -eq ')') {
+                    if ($depth -eq 0) { break }     # this ')' closes the link
+                    $depth--
+                }
+                $i++
+            }
+            if ($depth -ne 0) { continue }          # unbalanced; not a destination
+            $value = $Line.Substring($valueStart, $i - $valueStart)
+        }
+
+        if ([string]::IsNullOrEmpty($value)) { continue }
+
+        # An optional title may sit between the destination and the close.
+        $j = $i
+        while ($j -lt $Line.Length -and [char]::IsWhiteSpace($Line[$j])) { $j++ }
+        if ($j -lt $Line.Length -and $Line[$j] -eq '"') {
+            $close = $Line.IndexOf('"', $j + 1)
+            if ($close -lt 0) { continue }
+            $j = $close + 1
+            while ($j -lt $Line.Length -and [char]::IsWhiteSpace($Line[$j])) { $j++ }
+        }
+
+        # Without a closing ')' this is not an inline link, so reporting its
+        # "destination" would invent a finding the document does not contain.
+        if ($j -ge $Line.Length -or $Line[$j] -ne ')') { continue }
+
+        $found += [pscustomobject]@{
+            Value = $value
+            Column = $valueStart + 1
+        }
+    }
+
+    return $found
+}
+
 function Test-DocumentationLink {
     param (
         [Parameter(Mandatory)]
@@ -394,23 +480,10 @@ function Test-DocumentationLink {
         $lineNumber = $index + 1
         $targets = @()
 
-        # Two destination forms, because Markdown has two. An angle-bracket
-        # destination (group 1) is the only way to write a target containing a
-        # space, and a bare destination (group 2) may contain balanced
-        # parentheses. A single [^)\s]+ class covers neither: it cannot match
-        # across a space at all, so '<./some file.md>' was invisible to this
-        # check rather than reported, and it stops at the first ')', so
-        # './foo(bar).md' was captured as './foo(bar' and reported broken when
-        # it was not. Exactly one group participates in any match.
-        foreach ($match in [regex]::Matches(
-                $MaskedLine[$index],
-                '!?\[[^\]]*\]\(\s*(?:<([^<>]*)>|((?:[^()\s]|\([^()]*\))+))(?:\s+"[^"]*")?\s*\)')) {
-            $group = if ($match.Groups[1].Success) { $match.Groups[1] } else { $match.Groups[2] }
-            $targets += [pscustomobject]@{
-                Value = $group.Value
-                Column = $group.Index + 1
-            }
-        }
+        # Inline links are scanned rather than matched, because a bare
+        # destination may nest parentheses to any depth and no character class
+        # can follow that. See Read-MarkdownInlineLink.
+        $targets += Read-MarkdownInlineLink -Line $MaskedLine[$index]
 
         foreach ($match in [regex]::Matches(
                 $MaskedLine[$index],

@@ -120,4 +120,37 @@ See [the target](./foo(bar).md).
 '@
         Invoke-Gate -FixtureDir $dir | Should -Not -Match 'does not exist'
     }
+
+    It 'sees a destination with nested balanced parentheses' {
+        # '\([^()]*\)' consumed one level only, so '((deep))' failed to match and
+        # the link was skipped -- never checked rather than reported, the same
+        # class of miss the angle-bracket case had.
+        $dir = New-GateFixture -Name 'nested-parens-broken' -Markdown @'
+# Doc
+
+See [the target](./missing((deep)).md).
+'@
+        Invoke-Gate -FixtureDir $dir | Should -Match 'missing\(\(deep\)\)\.md'
+    }
+
+    It 'accepts a nested-parenthesis destination whose target exists' {
+        $dir = New-GateFixture -Name 'nested-parens-valid' -AlsoCreate @('foo((bar)).md') -Markdown @'
+# Doc
+
+See [the target](./foo((bar)).md).
+'@
+        Invoke-Gate -FixtureDir $dir | Should -Not -Match 'does not exist'
+    }
+
+    It 'does not treat an unbalanced destination as a link' {
+        # A stray '(' leaves the scanner mid-nesting at end of line. Reporting a
+        # partial capture would invent a finding the document does not contain,
+        # so the link is skipped rather than guessed at.
+        $dir = New-GateFixture -Name 'unbalanced-parens' -Markdown @'
+# Doc
+
+See [the target](./broken(unclosed.md).
+'@
+        Invoke-Gate -FixtureDir $dir | Should -Not -Match 'does not exist'
+    }
 }
