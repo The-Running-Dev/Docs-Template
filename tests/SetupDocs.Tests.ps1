@@ -296,6 +296,41 @@ Describe 'setup-docs.ps1 -DocsDirectory' {
         } | Should -Throw '*must not nest*'
     }
 
+    It 'rejects a -DocsDirectory containing whitespace' {
+        $projectDir = Join-Path $TestDrive 'invalid-whitespace-name'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'project docs' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*must not contain whitespace or quotes*'
+    }
+
+    It 'rejects a -DocsDirectory containing a quote' {
+        $projectDir = Join-Path $TestDrive 'invalid-quote-name'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory "project's-docs" `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*must not contain whitespace or quotes*'
+    }
+
+    It 'rejects a multi-segment -DocsDirectory' {
+        $projectDir = Join-Path $TestDrive 'invalid-multi-segment'
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory 'sites/documentation' `
+                -SkipWorkflow -SkipGate
+        } | Should -Throw '*single directory name*'
+    }
+
+    It 'treats a case-only respelling of an installed directory as a conflict, not a match' {
+        $projectDir = Join-Path $TestDrive 'case-conflict'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Case Conflict Project' -DocsDirectory 'documentation' `
+            -SkipWorkflow -SkipGate
+
+        {
+            & $script:setupScript -ProjectDir $projectDir -Title 'Case Conflict Project' -DocsDirectory 'Documentation' `
+                -Overwrite -SkipWorkflow -SkipGate
+        } | Should -Throw '*names a different*'
+    }
+
     It 'warns, but does not fail, when -DocsDirectory collides with an ExcludedSegments entry' {
         $projectDir = Join-Path $TestDrive 'excluded-segment'
         $output = & $script:setupScript -ProjectDir $projectDir -Title 'Excluded Segment Project' `

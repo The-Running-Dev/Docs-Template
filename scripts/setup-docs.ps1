@@ -57,6 +57,11 @@
     the authored docs/ and src/pages/ subdirectories -- renaming it does not
     change what is inside, only where the whole overlay sits in the project.
 
+    A single directory name, not a path: no whitespace, quotes, or path
+    separators. It is written into generated PowerShell, PSD1, and YAML
+    literals, and a nested value could not be rediscovered by a later run
+    that omits this parameter.
+
     An existing installation is detected, not merely trusted: if the project
     already has a directory this installer owns (found by the pair of files
     only it writes together, docusaurus.config.ts and sidebar.ts), a re-run
@@ -663,6 +668,31 @@ if ([string]::IsNullOrWhiteSpace($BaseImage)) {
     throw '-BaseImage must not be empty.'
 }
 
+# -DocsDirectory is written verbatim into a PSD1 single-quoted literal
+# (Path/GeneratedFiles), a PowerShell single-quoted literal (docs.ps1's
+# Join-Path key), and an unquoted argument on a generated `run:` line in
+# docs-ci.yml/docs-deploy.yml. A quote would break the first two the same way
+# an unescaped -Title once did; whitespace would split the workflow argument
+# into two, since nothing there is quoted for it. Reject rather than escape:
+# a directory name has no reason to need either.
+if ($DocsDirectory -match '[\s''"]') {
+    throw "-DocsDirectory must not contain whitespace or quotes: '$DocsDirectory'."
+}
+
+# A single segment only. Find-InstalledDocsDirectory -- the mechanism a later
+# re-run relies on to rediscover this directory without -DocsDirectory being
+# passed again -- looks only at -ProjectDir's immediate children, by design
+# (an overlay this installer owns is never nested more than one level deep).
+# A multi-segment value like 'sites/documentation' would install correctly
+# once but then go undetected on the very next omitted-parameter run,
+# silently creating a second, default 'docs/' overlay beside it.
+if ($DocsDirectory -match '[\\/]') {
+    throw (
+        "-DocsDirectory must be a single directory name, not a path: '$DocsDirectory'. " +
+        'A nested path cannot be rediscovered by a later run that omits this parameter.'
+    )
+}
+
 $defaultBaseImage = 'ghcr.io/the-running-dev/docs-template:latest'
 
 $projectPath = Resolve-ProjectPath -Path $ProjectDir
@@ -695,7 +725,13 @@ $docsDirectoryExplicit = $PSBoundParameters.ContainsKey('DocsDirectory')
 $installedDocsDirectories = @(Find-InstalledDocsDirectory -ProjectRoot $projectPath)
 
 if ($docsDirectoryExplicit) {
-    $conflicting = @($installedDocsDirectories | Where-Object { $_ -ne $DocsDirectory })
+    # Case-sensitive: PowerShell's default -ne treats 'documentation' and
+    # 'Documentation' as equal, which would let a case-only respelling slip
+    # past this conflict check entirely. The base image builds on Linux,
+    # where the two are different directories -- comparing case-sensitively
+    # here matches what actually happens on disk in CI, regardless of which
+    # OS the installer itself runs on.
+    $conflicting = @($installedDocsDirectories | Where-Object { $_ -cne $DocsDirectory })
     if ($conflicting.Count -gt 0) {
         throw (
             "This project's documentation is already installed at " +
@@ -708,7 +744,7 @@ if ($docsDirectoryExplicit) {
 }
 elseif ($installedDocsDirectories.Count -eq 1) {
     $effectiveDocsDirectory = $installedDocsDirectories[0]
-    if ($effectiveDocsDirectory -ne $DocsDirectory) {
+    if ($effectiveDocsDirectory -cne $DocsDirectory) {
         Write-Host (
             "[SETUP] Keeping this project's documentation directory '$effectiveDocsDirectory' " +
             "rather than the default '$DocsDirectory'; pass -DocsDirectory to change it."

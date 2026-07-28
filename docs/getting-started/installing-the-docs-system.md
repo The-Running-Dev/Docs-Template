@@ -32,9 +32,10 @@ image tag instead of tracking `:latest`, and is written to all four places an
 install references the image.
 
 By default the Docusaurus overlay lives at `docs/`. Pass `-DocsDirectory
-documentation` (or any other repository-relative name) to put it somewhere
-else — every generated path, command, gate rule, and workflow follows that
-choice, so nothing needs hand-adjusting afterward. A re-run that omits
+documentation` (a single directory name — no spaces, quotes, or nested paths)
+to put it somewhere else — every generated path, command, gate rule, and
+workflow follows that choice, so nothing needs hand-adjusting afterward. A
+re-run that omits
 `-DocsDirectory` detects and keeps whichever directory is already installed,
 the same way an existing `-RouteBasePath` is preserved; pointing it at a
 _different_ directory than the one already installed is refused, not migrated
