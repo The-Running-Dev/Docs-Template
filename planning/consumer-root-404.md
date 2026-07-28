@@ -1,11 +1,15 @@
-# docs-template — removing `src/pages` left consumers with no root page
+# docs-template — nothing routes `/`, so consumers 404 at the root and carry a broken brand link on every page
 
 **Status:** Open
-**Severity:** medium — silently breaks the canonical URL of every consumer site
-using the default `routeBasePath`
+**Severity:** **high.** Silently breaks the canonical URL of every consumer site
+using the default `routeBasePath`, puts a broken link on every page of every
+consumer site, and is **build-breaking** for any consumer that sets
+`onBrokenLinks: 'throw'`
 **Labels:** `bug`, `consumer-impact`
 **Found:** follow-up to #44, verified against the CI-built Pages artifact for
-`The-Running-Dev/SubZeroDev.WinGet`
+`The-Running-Dev/SubZeroDev.WinGet`; navbar symptom found via
+`The-Running-Dev/SubZeroDev.GameEngine` (deploy broken) and reproduced against
+`SubZeroDev.WinGet` (silently affected)
 
 Follow-up to the `src/pages` leakage fix. That fix is **confirmed working** — this
 is the side effect it introduced.
@@ -15,18 +19,29 @@ is the side effect it introduced.
 The previous fix removed `/template/src/pages/*` wholesale, which correctly
 eliminated the leaked `/cv`, `/portfolio`, `/projects` and `/admin/projects`
 routes. But `index.tsx` went with them, so a build now emits **no root page at
-all**.
+all**, while the installed config still serves everything under
+`routeBasePath: 'docs'`.
+
+One root cause, two symptoms — and the second is much larger than the first:
+
+1. **The bare domain 404s.** For most consumers that is the advertised URL.
+2. **The navbar brand links to `/` on every page**, including `404.html`. A
+   consumer on the default `'warn'` publishes a site whose brand link is dead
+   everywhere; a consumer on `'throw'` cannot build at all.
+
+The installed config does not disable the classic preset's `pages` plugin, so it
+scans `/template/src/pages/` and adopts whatever the image ships there. That
+single fact produced both the original leak and, once the directory was removed,
+this regression.
+
+## Symptom 1 — nothing serves the bare domain
 
 With the default `routeBasePath: 'docs'`, content lives at `/docs/*` and the bare
 domain 404s. For most consumers the bare domain is the advertised URL — the thing
 in the README, the repo's About field, and any existing inbound links — so the
 fix trades a wrong homepage for a missing one.
 
-Severity: **medium.** Not as bad as serving someone else's CV, but it silently
-breaks the canonical URL of every consumer site that uses the default
-`routeBasePath`.
-
-## Evidence
+### Evidence
 
 Verified against the CI-built Pages artifact for
 `The-Running-Dev/SubZeroDev.WinGet` (`baseUrl: '/'`, `routeBasePath: 'docs'`).
@@ -52,7 +67,7 @@ artifact root: 404.html  CNAME  assets  docs  img  sitemap.xml  themes
 The leakage fix worked exactly as specified. The only regression is the empty
 root.
 
-## Reproduce
+### Reproduce
 
 ```bash
 docker run --rm -v "$PWD:/work" -w /work \
@@ -64,18 +79,90 @@ ls artifacts/docs/index.html   # absent
 
 Then serve `artifacts/docs` and request `/` → 404.
 
+## Symptom 2 — the navbar brand links to `/` on every page
+
+This was masked until recently by the demo pages the image happened to ship. The
+accidental upside of the leak was that `/` resolved, which hid this entirely.
+Removing the pages — correct in itself — exposed the latent defect and broke a
+downstream deploy **with no commit in the downstream repository**.
+
+### Mechanism
+
+Docusaurus's `Logo` component computes its target as `useBaseUrl(logo?.href || '/')`
+and renders the wrapping `<Link>` **unconditionally** — only the image inside it is
+conditional. Confirmed in
+`node_modules/@docusaurus/theme-classic/lib/theme/Logo/index.js`:
+
+```js
+const logoLink = useBaseUrl(logo?.href || '/');
+return (
+  <Link to={logoLink} {...propsRest} {...(logo?.target && {target: logo.target})}>
+    {logo && <LogoThemedImage logo={logo} alt={alt} imageClassName={imageClassName} />}
+    {navbarTitle != null && <b className={titleClassName}>{navbarTitle}</b>}
+  </Link>
+);
+```
+
+The config `Invoke-SetupDocs` installs
+(`scripts/template/docusaurus.config.ts`) sets neither `logo` nor `logo.href`, so
+the link always targets `/`. It also ships `navbar.title: ''` — which is `!= null`,
+so an empty `<b>` renders inside the link. The result is a link that is invisible
+but present on every page.
+
+Also relevant: that config declares no `plugins` and no redirects, so nothing else
+supplies a `/` route.
+
+### Reproduce
+
+1. Install into a fresh repository with the defaults `Invoke-SetupDocs` produces.
+2. Set `onBrokenLinks: 'throw'` in `docs/docusaurus.config.ts`.
+3. Run `Invoke-DocsBuild`.
+
+The build fails with one broken link per page, all targeting `/`:
+
+```
+Exhaustive list of all broken links found:
+- Broken link on source page path = /404.html:
+   -> linking to /
+- Broken link on source page path = /docs/:
+   -> linking to /
+- Broken link on source page path = /docs/engine/architecture:
+   -> linking to /
+  … one per page …
+```
+
+With the default `'warn'` the same entries print as warnings and the build passes,
+which is why this went unnoticed. `SubZeroDev.WinGet` is in exactly that state
+today: it works, and its navbar brand is a dead link on every page.
+
+### Evidence: same commit, opposite outcomes
+
+`SubZeroDev.GameEngine`, commit `47342b3`, `docs-deploy.yml`, no repository change
+between the two runs:
+
+| Run | Base image digest | Result |
+|---|---|---|
+| [30303045991](https://github.com/The-Running-Dev/SubZeroDev.GameEngine/actions/runs/30303045991) | `sha256:5e18fd4b…` | success |
+| [30310899953](https://github.com/The-Running-Dev/SubZeroDev.GameEngine/actions/runs/30310899953) | `sha256:2f0c9ad5…` | failure — 9 broken links to `/` |
+
+Node `26.5.0` and Docusaurus `3.10.1` in both. Because the consumer workflows
+track `:latest`, this arrives without a commit — a green `main` goes red on the
+next run of unchanged code, which is expensive to diagnose from the consumer side.
+
 ## Why the previous spec allowed this
 
 The earlier acceptance criteria said the root should be *"either empty-by-design or
 a redirect."* Removing it satisfied the letter of that. In practice the
 empty-by-design option is the wrong default: it only works for consumers whose
 advertised URL already includes `/docs`, and nothing in the template steers them
-there. Treat this as a correction to that criterion, not a new requirement.
+there. Symptom 2 retires the option outright — "empty by design" is not available
+when the theme links to `/` from every page. Treat this as a correction to that
+criterion, not a new requirement.
 
 ## Required fix
 
 Ship a root that forwards to `routeBasePath`, so the bare domain resolves out of
-the box.
+the box **and** the brand link resolves against the route table.
 
 Constraints:
 
@@ -86,25 +173,64 @@ Constraints:
   root and a redirect would loop.
 - Must remain overridable: a consumer that wants a real landing page must be able
   to supply one without fighting an image file.
+- **Must satisfy the broken-link checker, not just the browser.** Docusaurus
+  resolves links against the route table, so only a real route fixes a `'throw'`
+  consumer. This constraint is what reorders the options below.
 
 ### Implementation options
 
-1. **`@docusaurus/plugin-client-redirects`** (most idiomatic). Configure
-   `redirects: [{ from: '/', to: '/${routeBasePath}/' }]` when `routeBasePath !== '/'`.
-   Generates the redirect at build time and is a supported Docusaurus feature.
-2. **A generated static `index.html`.** Emit a minimal meta-refresh document into
-   the build root during `docs-build`, derived from the configured
-   `routeBasePath`. No dependency, but hand-rolled.
-3. **Leave it to consumers, and document it.** Acceptable only if the README calls
-   it out prominently — otherwise every consumer ships a 404 at their advertised
-   URL and finds out from a user.
+**A. Ship `src/pages/index.tsx` in the template — recommended.** Forward `/` to the
+docs base with a `meta refresh` in `<Head>` plus a `rel=canonical`. This is the only
+option demonstrated to fix both `'warn'` and `'throw'` consumers, because it is a
+real route *and* a real file: it satisfies the broken-link checker and forwards
+without JavaScript. The template owns both this file and the installed config, so
+one shared `routeBasePath` constant can drive both, avoiding the duplication a
+consumer-side fix is forced into.
 
-Preference: option 1, falling back to 2 if the plugin dependency is unwanted.
+Prefer `<Head>` with a `meta refresh` over `<Redirect>` from `@docusaurus/router`:
+`<Redirect>` is client-side and emits an empty shell that only forwards after React
+hydrates.
+
+Note this reintroduces a file under `src/pages/`, which `.dockerignore:232` and
+`scripts/template/Dockerfile:17` currently strip wholesale. Both need to allow this
+one file through without readmitting the demo pages — that is the main design work
+in this option.
+
+**B. Give the navbar brand an explicit `href`.** Set `navbar.logo.href` to the docs
+base in the installed config. This removes the broken link at its source, which is
+the most honest fix for symptom 2 — but it does nothing for symptom 1, and
+Docusaurus's types require `logo.src` alongside `href`, which forces a navbar image
+on every consumer. That visible change to sites that deliberately have none is the
+only reason it is not the recommendation. Viable as a companion to A, not a
+replacement.
+
+**C. `@docusaurus/plugin-client-redirects`.** Configure
+`redirects: [{ from: '/', to: '/${routeBasePath}/' }]` when `routeBasePath !== '/'`.
+Idiomatic and supported, but **unverified against the `'throw'` case**: it is not
+currently a dependency, and whether its generated redirect registers a route the
+broken-link checker accepts has not been confirmed. Verify that before preferring
+it — this was the previous recommendation, and symptom 2 is why it no longer is.
+
+**D. A static `index.html` in the template.** Simplest possible change — no React,
+no build-time behaviour — but **does not help `'throw'` consumers**: a static file
+is not a route.
+Verified — [run 30315030056](https://github.com/The-Running-Dev/SubZeroDev.GameEngine/actions/runs/30315030056)
+reproduced the failure exactly with the file in place. Good as a stopgap,
+insufficient as the fix.
+
+**E. Change the installed default to `routeBasePath: '/'`.** Removes the orphan root
+entirely: the generated homepage becomes the site root, which also matches how
+`ConvertTo-DocumentationHomepage.ps1` describes its own output ("the site
+homepage"). Breaking for existing consumers — every `/docs/…` URL moves — so only
+viable behind a flag or a major version.
 
 ### Acceptance criteria
 
 - With default `routeBasePath: 'docs'`, a consumer build emits a root that
   resolves — request `/`, land on the docs homepage.
+- A consumer that sets `onBrokenLinks: 'throw'` builds successfully with no
+  authored changes.
+- No page reports a broken link to `/`, including `404.html`.
 - With `routeBasePath: '/'`, no redirect artifact is emitted and `/` is the docs
   homepage directly (no redirect loop).
 - The emitted root carries no template-authored copy beyond a minimal redirect
@@ -114,10 +240,23 @@ Preference: option 1, falling back to 2 if the plugin dependency is unwanted.
 - A consumer-supplied `static/index.html` still wins over whatever the template
   emits.
 
-## Current downstream workaround
+## Guard against recurrence
 
-`SubZeroDev.WinGet` now carries this, which should become unnecessary once the
-template handles it:
+Whichever option lands, **build the template's own site with `onBrokenLinks: 'throw'`
+in CI.** This defect is invisible under the template's own `'warn'` default; a single
+job would have caught it before publish, and would catch the next layout-level link
+regression too.
+
+`build-warnings.md` proposes the same change to this repository's `onBrokenLinks`
+for its own reasons, including the one prerequisite: the five intentional demo links
+on `/demos/404` must stop rendering through `@docusaurus/Link` first, or they fail
+the build themselves. One change satisfies both files.
+
+## Current downstream workarounds
+
+Both should become unnecessary once the template handles this.
+
+**`SubZeroDev.WinGet`** carries a static root file:
 
 ```html
 <!-- docs/static/index.html -->
@@ -137,11 +276,17 @@ template handles it:
 
 Files under `docs/static/` are copied to the build root, so this lands at `/`
 without reintroducing a page component. Confirmed present in the CI artifact with
-`url=/docs/`.
+`url=/docs/`. It fixes the bare domain only — the navbar brand link is still dead on
+every page of that site.
 
-Note this is a per-consumer copy of template-level behaviour — the reason to fix it
-upstream. If the template starts emitting its own root, consumers carrying this
-file should be told to delete it, since a consumer `static/index.html` will
-otherwise shadow the generated one (which is correct precedence, but means the
-hardcoded `/docs/` here would survive a future `routeBasePath` change and break
-silently).
+**`SubZeroDev.GameEngine`** ships the same static file *and* has relaxed
+`onBrokenLinks` back to `'warn'` to match the template default. The cost is that its
+markdown gate skips site-absolute targets — it defers them to Docusaurus's pass — so
+those links are no longer gated anywhere.
+
+Note these are per-consumer copies of template-level behaviour, which is the reason
+to fix it upstream. If the template starts emitting its own root, consumers carrying
+the static file should be told to delete it: a consumer `static/index.html` shadows
+the generated one (correct precedence, but the hardcoded `/docs/` would survive a
+future `routeBasePath` change and break silently). Once A or B ships, GameEngine can
+delete its file and return to `'throw'`, and WinGet stops carrying a dead brand link.
