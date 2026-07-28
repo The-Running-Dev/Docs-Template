@@ -6,11 +6,18 @@
     Installs everything a project needs to author, preview, check, and publish
     documentation from this template:
 
+      README.md                      Created from -Title/-Description if the
+                                      project does not already have one
       docs/                          Docusaurus overlay copied over /template
         docusaurus.config.ts         Site configuration
         sidebar.ts                   Sidebar configuration
         Dockerfile, .dockerignore    Local preview only
-        docs/index.md                Homepage, generated from the README
+        docs/index.md                Docs index (-RouteBasePath '/') or a
+                                      landing page (any other value)
+        src/pages/index.md           Site root, generated from the README --
+                                      only when -RouteBasePath is not '/',
+                                      where the docs index above is already
+                                      the root
       docs.ps1                       Local preview entry point
       build/                         Homepage generator and documentation gate
       .config/                       Gate rules
@@ -18,7 +25,10 @@
 
     Idempotent. Without -Overwrite an existing file is left alone and reported
     as skipped, which matters because the workflows are kept byte-identical to
-    this template so the command can be re-run to pick up upstream fixes.
+    this template so the command can be re-run to pick up upstream fixes. The
+    same applies to a project upgrading from before the README/site-root split
+    above: re-run with -Overwrite once to pick it up, the same as any other
+    upstream fix.
 
     Upgrading from a version that installed four workflow files also deletes
     the two now retired, docs.yml and docs-quality.yml, reporting them as
@@ -65,12 +75,16 @@
     root.
 
     That default matters for more than tidiness. The theme's 404 page and the
-    docs navbar both link to '/', so with docs under '/docs' and nothing at the
-    root, Docusaurus reports two broken links the project never wrote -- benign
-    under the shipped onBrokenLinks 'warn', a failed build for anyone who raises
-    it to 'throw'. Serving from the root makes both resolve. It also matches
-    what the homepage generator assumes when it rewrites the published site
-    origin to '/'.
+    docs navbar both link to '/'; with docs under '/docs' and nothing at the
+    root, Docusaurus used to report two broken links the project never wrote --
+    benign under the shipped onBrokenLinks 'warn', a failed build for anyone
+    who raises it to 'throw'. With '/', the generated homepage IS the site
+    root, so both resolve without anything else needed.
+
+    Any other value is handled too, not merely avoided: the generated homepage
+    is written to docs/src/pages/index.md instead, so it still becomes the
+    site root, and docs/docs/index.md becomes a minimal landing page rather
+    than a second copy of the same content.
 
     An existing docusaurus.config.ts is never silently re-pointed: under
     -Overwrite the value already in the file is preserved unless this parameter
@@ -681,11 +695,28 @@ if (-not $WorkflowsOnly) {
 
     $readmePath = Join-Path $projectPath 'README.md'
     $indexPath = Join-Path $contentDir 'index.md'
-    $generateHomepage = -not $NoHomepage -and (Test-Path -LiteralPath $readmePath -PathType Leaf)
 
+    # "Only when absent" is the entire guard here: an existing README is never
+    # touched, and a created one runs through exactly the same generation path
+    # below as one the project already had. There is no longer a second,
+    # stub-only path for a project with no README -- every project ends up
+    # with a real README, and the site root renders from it.
     if (-not $NoHomepage -and -not (Test-Path -LiteralPath $readmePath -PathType Leaf)) {
-        Write-Warning 'No README.md found; skipping homepage generation. Pass -NoHomepage to silence this.'
+        $safeReadmeTitle = ($Title -replace '\r\n?|\n', ' ').Trim()
+        $readmeLines = @("# $safeReadmeTitle", '')
+        if (-not [string]::IsNullOrWhiteSpace($Description)) {
+            $readmeLines += @($Description, '')
+        }
+        if ($PSCmdlet.ShouldProcess($readmePath, 'Create')) {
+            [IO.File]::WriteAllText(
+                $readmePath,
+                (($readmeLines -join "`n") -replace "`r`n", "`n"),
+                [Text.UTF8Encoding]::new($false))
+            $created.Add('README.md')
+        }
     }
+
+    $generateHomepage = -not $NoHomepage -and (Test-Path -LiteralPath $readmePath -PathType Leaf)
 
     # Only install the generator when something actually runs it. With -NoHomepage
     # the gate has no drift check and docs.ps1 skips regeneration, so shipping it
@@ -694,9 +725,7 @@ if (-not $WorkflowsOnly) {
         Copy-TemplateFile -Name 'ConvertTo-DocumentationHomepage.ps1' `
             -Destination (Join-Path $scriptTarget 'ConvertTo-DocumentationHomepage.ps1') `
             -Relative "$ScriptDir/ConvertTo-DocumentationHomepage.ps1"
-    }
 
-    if ($generateHomepage) {
         $homepageScript = Join-Path $templateDir 'ConvertTo-DocumentationHomepage.ps1'
         $content = & $homepageScript `
             -ReadmePath $readmePath `
@@ -704,17 +733,51 @@ if (-not $WorkflowsOnly) {
             -Description $Description `
             -SiteUrl $SiteUrl `
             -RouteBasePath $effectiveRouteBasePath
-        Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
-    }
-    elseif (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
-        # Collapsed once and reused for both the front matter title and the
-        # heading, so a -Title containing a newline shows the same value in each
-        # place instead of silently differing between them.
-        $safeTitle = ($Title -replace '\r\n?|\n', ' ').Trim()
-        Set-ProjectFile `
-            -Destination $indexPath `
-            -Content "---`ntitle: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)`nsidebar_position: 1`n---`n`n# $safeTitle`n" `
-            -Relative 'docs/docs/index.md'
+
+        if ($effectiveRouteBasePath.Trim('/') -eq '') {
+            # routeBasePath '/': the docs index already IS the site root, so
+            # the README renders there directly. One file, one URL.
+            Set-ProjectFile -Destination $indexPath -Content $content -Relative 'docs/docs/index.md'
+        }
+        else {
+            # Any other routeBasePath: the README becomes a real page route at
+            # the site root, generated into docs/src/pages so it overlays onto
+            # /template/src/pages the same way docs-build.ps1 already expects a
+            # consumer-authored page to -- see its comment on stripping the
+            # image's own src/pages before the overlay, "so a consumer
+            # supplying their own docs/src/pages is not mistaken for the leak."
+            $rootPagePath = Join-Path $docsDir 'src' 'pages' 'index.md'
+            Set-ProjectFile -Destination $rootPagePath -Content $content -Relative 'docs/src/pages/index.md'
+
+            # docs/docs/index.md still resolves at /docs/ -- typed, bookmarked,
+            # or linked from before this change -- and must keep resolving. Its
+            # content stops being a copy of the README (that now lives at '/',
+            # not twice) and becomes a minimal landing page instead.
+            #
+            # A project upgrading from before this change already has
+            # README-derived content here; recognizing that automatically
+            # would mean reconstructing byte-for-byte what a since-removed
+            # code path used to produce, which cannot be verified without
+            # risking a false match overwriting a hand-authored /docs/ page.
+            # -Overwrite already exists for exactly this -- "re-running to
+            # pick up an upstream fix" -- so migrating this file follows the
+            # same one-time step as every other installed file.
+            $safeLandingTitle = ($Title -replace '\r\n?|\n', ' ').Trim()
+            $landingLines = @(
+                '---'
+                "title: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)"
+            )
+            if (-not [string]::IsNullOrWhiteSpace($Description)) {
+                $landingLines += "description: $(ConvertTo-YamlSingleQuotedScalar -Value $Description)"
+            }
+            $landingLines += @('sidebar_position: 1', '---', '', "# $safeLandingTitle")
+            if (-not [string]::IsNullOrWhiteSpace($Description)) {
+                $landingLines += @('', $Description)
+            }
+            $landingContent = ($landingLines -join "`n") + "`n"
+
+            Set-ProjectFile -Destination $indexPath -Content $landingContent -Relative 'docs/docs/index.md'
+        }
     }
 
     # --- Documentation gate -----------------------------------------------------
@@ -734,7 +797,20 @@ if (-not $WorkflowsOnly) {
         $rules = $rules.Replace("Title = 'Home'", "Title = '$($Title.Replace("'", "''"))'")
         $rules = $rules.Replace("Description = ''", "Description = '$($Description.Replace("'", "''"))'")
         $rules = $rules.Replace("SiteUrl = ''", "SiteUrl = '$($SiteUrl.Replace("'", "''"))'")
-    $rules = $rules.Replace("RouteBasePath = '/'", "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'")
+        $rules = $rules.Replace("RouteBasePath = '/'", "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'")
+
+        # Path follows the same routeBasePath split as the file setup-docs.ps1
+        # itself just wrote: the docs index when routeBasePath is '/', the
+        # site root page otherwise. Computed the same way in both places
+        # rather than read back from one, so there is one rule instead of two
+        # that could disagree.
+        $generatedFileRelativePath = if ($effectiveRouteBasePath.Trim('/') -eq '') {
+            'docs/docs/index.md'
+        }
+        else {
+            'docs/src/pages/index.md'
+        }
+        $rules = $rules.Replace("Path = 'docs/docs/index.md'", "Path = '$generatedFileRelativePath'")
 
         if (-not $generateHomepage) {
             # Drop the GeneratedFiles block entirely rather than leave a check for a

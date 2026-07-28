@@ -27,7 +27,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebar.ts',
-          routeBasePath: 'docs'
+          routeBasePath: '/'
         },
         blog: false
       } satisfies Preset.Options

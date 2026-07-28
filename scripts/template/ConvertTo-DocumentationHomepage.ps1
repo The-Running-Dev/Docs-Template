@@ -3,15 +3,25 @@
     Builds the documentation homepage content from the project README.
 
 .DESCRIPTION
-    Returns what docs/docs/index.md should contain: Docusaurus front matter
-    followed by the README, with the published site origin rewritten to a
-    root-relative path.
+    Returns Docusaurus front matter followed by the README, with the published
+    site origin rewritten to a root-relative path.
 
     That rewrite is the point. The README is rendered twice — on the code host,
-    where links must be absolute to work, and as the site homepage, where the
-    same absolute links would send a reader back out to the site they are
-    already on. Writing absolute links and rewriting them here keeps one file
-    correct in both places.
+    where links must be absolute to work, and as a site page, where the same
+    absolute links would send a reader back out to the site they are already
+    on. Writing absolute links and rewriting them here keeps one file correct
+    in both places.
+
+    Where the result is meant to be installed depends on -RouteBasePath, which
+    this script does not write to disk itself:
+
+    - '/' means the docs are served from the site root, so this page IS the
+      docs index (docs/docs/index.md) and gets sidebar_position: 1 to sort
+      first.
+    - Anything else means the docs are served from a sub-path, so this page is
+      the site ROOT instead (docs/src/pages/index.md) -- outside the docs
+      sidebar entirely, hence no sidebar_position -- with a link into the docs
+      appended, since a bare README otherwise has no path back to them.
 
     Both the preview script and the documentation gate call this. Keeping one
     implementation is deliberate: a second copy would be free to disagree with
@@ -60,6 +70,12 @@ param(
     # docusaurus.config.ts. Absolute links to -SiteUrl are rewritten to this, so
     # a project serving under '/docs' gets links that resolve there instead of
     # at a site root that has no page.
+    #
+    # Also decides what this script is generating, entirely from this one
+    # value: '/' means the result is the docs index; anything else means the
+    # result is the site root page, which changes the front matter (no
+    # sidebar_position -- this page is not in the docs sidebar) and appends a
+    # link into the docs (this page's only path there).
     [Parameter()]
     [ValidateNotNullOrEmpty()]
     [string]$RouteBasePath = '/',
@@ -121,6 +137,20 @@ if (-not (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
     )
 }
 
+# '/' means this page IS the docs index -- sidebar_position sorts it first,
+# and it needs no link into the docs because it already is one. Anything else
+# means this page is the site ROOT, generated outside the docs sidebar
+# entirely, where sidebar_position would be meaningless and a bare README
+# otherwise has no path into the docs at all.
+$isRootPage = $RouteBasePath.Trim('/') -ne ''
+
+# Trailing slash on both sides so '/docs' and '/docs/' behave the same and the
+# result never doubles a separator. Computed unconditionally -- needed for the
+# root-page docs link below regardless of whether -SiteUrl was given, not only
+# for the absolute-link rewrite.
+$target = '/' + $RouteBasePath.Trim('/')
+if ($target -ne '/') { $target += '/' }
+
 $frontMatterLines = @(
     '---'
     "title: $(ConvertTo-YamlSingleQuotedScalar -Value $Title)"
@@ -128,8 +158,10 @@ $frontMatterLines = @(
 if (-not [string]::IsNullOrWhiteSpace($Description)) {
     $frontMatterLines += "description: $(ConvertTo-YamlSingleQuotedScalar -Value $Description)"
 }
+if (-not $isRootPage) {
+    $frontMatterLines += 'sidebar_position: 1'
+}
 $frontMatterLines += @(
-    'sidebar_position: 1'
     '---'
     ''
 )
@@ -142,11 +174,11 @@ $body = if ([string]::IsNullOrWhiteSpace($SiteUrl)) {
     $readme
 }
 else {
-    # Trailing slash on both sides so '/docs' and '/docs/' behave the same and
-    # the result never doubles a separator.
-    $target = '/' + $RouteBasePath.Trim('/')
-    if ($target -ne '/') { $target += '/' }
     $readme.Replace($SiteUrl, $target)
+}
+
+if ($isRootPage) {
+    $body = $body.TrimEnd("`n") + "`n`n[View the documentation]($target)`n"
 }
 
 $document = $frontMatter + "`n" + $body

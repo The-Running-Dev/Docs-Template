@@ -67,7 +67,7 @@ Describe 'Copy-TemplateFile unmatched-key guard' {
 
         $corruptedConfig = Join-Path $script:corruptedScripts 'template' 'docusaurus.config.ts'
         $content = Get-Content -LiteralPath $corruptedConfig -Raw
-        $content = $content -replace "routeBasePath:\s*'docs'", 'routeBasePath: "docs"'
+        $content = $content -replace "routeBasePath:\s*'/'", 'routeBasePath: "/"'
         Set-Content -LiteralPath $corruptedConfig -Value $content -NoNewline
 
         $script:corruptedSetupScript = Join-Path $script:corruptedScripts 'setup-docs.ps1'
@@ -79,5 +79,110 @@ Describe 'Copy-TemplateFile unmatched-key guard' {
             & $script:corruptedSetupScript -ProjectDir $projectDir -Title 'Test Project' `
                 -RouteBasePath 'docs' -SkipWorkflow -SkipGate
         } | Should -Throw '*matched nothing*'
+    }
+}
+
+Describe 'setup-docs.ps1 README creation' {
+    It 'creates README.md from -Title/-Description when the project has none' {
+        $projectDir = Join-Path $TestDrive 'no-readme'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Fresh Project' -Description 'A fresh project' `
+            -SkipWorkflow -SkipGate
+
+        $readmePath = Join-Path $projectDir 'README.md'
+        Test-Path -LiteralPath $readmePath | Should -BeTrue
+        $readme = Get-Content -LiteralPath $readmePath -Raw
+        $readme | Should -Match '# Fresh Project'
+        $readme | Should -Match 'A fresh project'
+    }
+
+    It 'never overwrites an existing README.md, even with -Overwrite' {
+        $projectDir = Join-Path $TestDrive 'existing-readme'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        $readmePath = Join-Path $projectDir 'README.md'
+        Set-Content -LiteralPath $readmePath -Value "# Hand-authored`n`nDo not touch this." -NoNewline
+
+        & $script:setupScript -ProjectDir $projectDir -Title 'Ignored Title' -Overwrite -SkipWorkflow -SkipGate
+
+        (Get-Content -LiteralPath $readmePath -Raw) | Should -Match 'Do not touch this\.'
+    }
+
+    It 'reaches the same generation path for a created README as for an existing one' {
+        # No behavioural assertion beyond "does not throw and produces a root
+        # page either way" -- this is a smoke test that the -NoHomepage-stub
+        # branch is really gone and both cases (README present, README
+        # absent) fall into the one remaining path.
+        $withReadme = Join-Path $TestDrive 'has-readme'
+        New-Item -ItemType Directory -Path $withReadme -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $withReadme 'README.md') -Value '# Already Here' -NoNewline
+        & $script:setupScript -ProjectDir $withReadme -Title 'Has Readme' -SkipWorkflow -SkipGate
+
+        $withoutReadme = Join-Path $TestDrive 'no-readme-2'
+        & $script:setupScript -ProjectDir $withoutReadme -Title 'No Readme' -SkipWorkflow -SkipGate
+
+        Test-Path -LiteralPath (Join-Path $withReadme 'docs' 'docs' 'index.md') | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $withoutReadme 'docs' 'docs' 'index.md') | Should -BeTrue
+    }
+}
+
+Describe 'setup-docs.ps1 root page destination' {
+    It 'writes the README-derived page to docs/docs/index.md when routeBasePath is /' {
+        $projectDir = Join-Path $TestDrive 'root-slash'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Root Slash Project' -SkipWorkflow -SkipGate
+
+        $indexPath = Join-Path $projectDir 'docs' 'docs' 'index.md'
+        Test-Path -LiteralPath $indexPath | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $projectDir 'docs' 'src' 'pages' 'index.md') | Should -BeFalse
+
+        $content = Get-Content -LiteralPath $indexPath -Raw
+        $content | Should -Match 'sidebar_position: 1'
+        $content | Should -Not -Match '\[View the documentation\]'
+    }
+
+    It 'writes the README-derived page to docs/src/pages/index.md when routeBasePath is not /' {
+        $projectDir = Join-Path $TestDrive 'custom-root'
+        & $script:setupScript -ProjectDir $projectDir -Title 'Custom Route Project' -RouteBasePath 'docs' `
+            -SkipWorkflow -SkipGate
+
+        $rootPagePath = Join-Path $projectDir 'docs' 'src' 'pages' 'index.md'
+        Test-Path -LiteralPath $rootPagePath | Should -BeTrue
+
+        $content = Get-Content -LiteralPath $rootPagePath -Raw
+        $content | Should -Not -Match 'sidebar_position'
+        $content | Should -Match '\[View the documentation\]\(/docs/\)'
+    }
+
+    It 'writes a landing page, not the README, to docs/docs/index.md when routeBasePath is not /' {
+        $projectDir = Join-Path $TestDrive 'custom-landing'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $projectDir 'README.md') `
+            -Value "# Custom Landing Project`n`nThis exact sentence must not appear at /docs/." -NoNewline
+
+        & $script:setupScript -ProjectDir $projectDir -Title 'Custom Landing Project' -RouteBasePath 'docs' `
+            -SkipWorkflow -SkipGate
+
+        $landingPath = Join-Path $projectDir 'docs' 'docs' 'index.md'
+        Test-Path -LiteralPath $landingPath | Should -BeTrue
+        $landing = Get-Content -LiteralPath $landingPath -Raw
+        $landing | Should -Match 'sidebar_position: 1'
+        $landing | Should -Not -Match 'This exact sentence must not appear at /docs/\.'
+    }
+
+    It 'requires -Overwrite to migrate a pre-existing docs/docs/index.md to a landing page' {
+        $projectDir = Join-Path $TestDrive 'migration'
+        New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $projectDir 'README.md') -Value '# Migration Project' -NoNewline
+        $indexPath = Join-Path $projectDir 'docs' 'docs' 'index.md'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $indexPath) -Force | Out-Null
+        Set-Content -LiteralPath $indexPath -Value "---`ntitle: 'Old'`n---`n`nOld README-derived content." -NoNewline
+
+        & $script:setupScript -ProjectDir $projectDir -Title 'Migration Project' -RouteBasePath 'docs' `
+            -SkipWorkflow -SkipGate
+
+        (Get-Content -LiteralPath $indexPath -Raw) | Should -Match 'Old README-derived content\.'
+
+        & $script:setupScript -ProjectDir $projectDir -Title 'Migration Project' -RouteBasePath 'docs' `
+            -Overwrite -SkipWorkflow -SkipGate
+
+        (Get-Content -LiteralPath $indexPath -Raw) | Should -Not -Match 'Old README-derived content\.'
     }
 }
