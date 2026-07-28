@@ -347,6 +347,38 @@ function Copy-TemplateFile {
     Set-ProjectFile -Destination $Destination -Content $content -Relative $Relative
 }
 
+function Set-TemplateToken {
+    <#
+    .SYNOPSIS
+    Replaces one literal token in already-loaded template content, throwing if
+    the token is not present.
+
+    DocumentationRules.psd1 and docs-ci.yml are templated by direct string
+    manipulation rather than through Copy-TemplateFile -- docs-ci.yml also needs
+    Remove-MarkedBlock applied in between substitutions, and the rules file is
+    built up token by token rather than copied by name -- so neither got
+    Copy-TemplateFile's throw-on-no-match guard for free. This gives them the
+    same guarantee: a key that matches nothing is always a bug, the template has
+    drifted from the caller, and it should fail loudly rather than silently
+    leave the placeholder in place.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Content,
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [Parameter(Mandatory)][string]$FileLabel
+    )
+
+    if (-not $Content.Contains($Key)) {
+        throw (
+            "Template asset '$FileLabel': replacement key '$Key' matched " +
+            'nothing. The template has likely changed; update the caller.'
+        )
+    }
+
+    return $Content.Replace($Key, $Value)
+}
+
 function ConvertTo-YamlSingleQuotedScalar {
     <#
     .SYNOPSIS
@@ -521,6 +553,15 @@ function Resolve-ContainedProjectDirectory {
     re-checked as a second, independent guard, so a separator or encoding
     trick that slips past the first two checks still cannot resolve outside
     -ProjectRoot.
+
+    -DisallowProjectRoot additionally rejects an empty/whitespace value and a
+    value that resolves to -ProjectRoot itself. Without it, an empty string
+    passes every check above -- Join-Path with '' returns the root unchanged,
+    which is exactly what -eq $normalizedRoot allows through -- so a caller
+    could silently install into the project root instead of a subdirectory.
+    Opt-in rather than the default: -ScriptDir/-ConfigDir/-WorkflowDir have
+    always allowed this and changing that now would be a behaviour change
+    unrelated to whatever added this switch.
     #>
     param (
         [Parameter(Mandatory)]
@@ -530,8 +571,15 @@ function Resolve-ContainedProjectDirectory {
         [string] $ParameterName,
 
         [Parameter(Mandatory)]
-        [string] $ProjectRoot
+        [string] $ProjectRoot,
+
+        [Parameter()]
+        [switch] $DisallowProjectRoot
     )
+
+    if ($DisallowProjectRoot -and [string]::IsNullOrWhiteSpace($Value)) {
+        throw "-$ParameterName must not be empty."
+    }
 
     if ([IO.Path]::IsPathRooted($Value)) {
         throw "-$ParameterName must be a path relative to the project, not rooted: '$Value'."
@@ -543,6 +591,10 @@ function Resolve-ContainedProjectDirectory {
 
     $resolved = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $Value))
     $normalizedRoot = $ProjectRoot.TrimEnd('\', '/')
+
+    if ($DisallowProjectRoot -and $resolved -eq $normalizedRoot) {
+        throw "-$ParameterName must not resolve to the project directory itself: '$Value'."
+    }
 
     if ($resolved -ne $normalizedRoot -and
         -not $resolved.StartsWith($normalizedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
@@ -798,11 +850,17 @@ if (-not $WorkflowsOnly) {
         # The rules file carries this project's front matter and site origin, so the
         # gate regenerates the homepage exactly as the preview script does.
         $rules = Get-Content -LiteralPath (Join-Path $templateDir 'DocumentationRules.psd1') -Raw
-        $rules = $rules.Replace("Generator = 'build/ConvertTo-DocumentationHomepage.ps1'", "Generator = '$ScriptDir/ConvertTo-DocumentationHomepage.ps1'")
-        $rules = $rules.Replace("Title = 'Home'", "Title = '$($Title.Replace("'", "''"))'")
-        $rules = $rules.Replace("Description = ''", "Description = '$($Description.Replace("'", "''"))'")
-        $rules = $rules.Replace("SiteUrl = ''", "SiteUrl = '$($SiteUrl.Replace("'", "''"))'")
-        $rules = $rules.Replace("RouteBasePath = '/'", "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'")
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Generator = 'build/ConvertTo-DocumentationHomepage.ps1'" `
+            -Value "Generator = '$ScriptDir/ConvertTo-DocumentationHomepage.ps1'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Title = 'Home'" -Value "Title = '$($Title.Replace("'", "''"))'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Description = ''" -Value "Description = '$($Description.Replace("'", "''"))'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "SiteUrl = ''" -Value "SiteUrl = '$($SiteUrl.Replace("'", "''"))'"
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "RouteBasePath = '/'" -Value "RouteBasePath = '$($effectiveRouteBasePath.Replace("'", "''"))'"
 
         # Path follows the same routeBasePath split as the file setup-docs.ps1
         # itself just wrote: the docs index when routeBasePath is '/', the
@@ -815,7 +873,8 @@ if (-not $WorkflowsOnly) {
         else {
             'docs/src/pages/index.md'
         }
-        $rules = $rules.Replace("Path = 'docs/docs/index.md'", "Path = '$generatedFileRelativePath'")
+        $rules = Set-TemplateToken -Content $rules -FileLabel 'DocumentationRules.psd1' `
+            -Key "Path = 'docs/docs/index.md'" -Value "Path = '$generatedFileRelativePath'"
 
         if (-not $generateHomepage) {
             # Drop the GeneratedFiles block entirely rather than leave a check for a
@@ -844,7 +903,8 @@ if (-not $SkipWorkflow) {
     # requires -SkipWorkflow and hand-adjusting the installed workflow, same as
     # today; this is not a new limitation, only carried over from the file split.
     $docsCiContent = Get-Content -LiteralPath (Join-Path $templateDir 'docs-ci.yml') -Raw
-    $docsCiContent = $docsCiContent.Replace("image: $defaultBaseImage", "image: $BaseImage")
+    $docsCiContent = Set-TemplateToken -Content $docsCiContent -FileLabel 'docs-ci.yml' `
+        -Key "image: $defaultBaseImage" -Value "image: $BaseImage"
 
     if ($SkipGate) {
         $docsCiContent = Remove-MarkedBlock -Content $docsCiContent `
