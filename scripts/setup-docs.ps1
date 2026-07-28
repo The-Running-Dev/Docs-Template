@@ -55,10 +55,14 @@
     Homepage front matter description.
 
 .PARAMETER SiteUrl
-    Published site origin, with a trailing slash, rewritten to -RouteBasePath in
-    the generated homepage. Give this when the README links to the published site
+    Published site origin, with a trailing slash, rewritten to '/' in the
+    generated homepage. Give this when the README links to the published site
     using absolute URLs, which is what makes one README work both on the code
     host and as the site homepage.
+
+    Rewritten to '/' and not to -RouteBasePath: an absolute link resolves
+    against the site root, so a link already pointing into the docs would
+    otherwise be prefixed twice.
 
 .PARAMETER ScriptDir
     Where PowerShell tooling is installed, relative to the project. Defaults to
