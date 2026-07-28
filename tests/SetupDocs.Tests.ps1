@@ -256,28 +256,36 @@ Describe 'setup-docs.ps1 -DocsDirectory' {
     }
 
     It 'rejects a rooted -DocsDirectory before writing anything' {
+        # A rooted value always contains a path separator, so the
+        # single-directory-name check (which runs first) catches it before
+        # Resolve-ContainedProjectDirectory's own rootedness check ever
+        # would -- still rejected, just by the earlier, more specific gate.
         $projectDir = Join-Path $TestDrive 'invalid-rooted'
         {
             & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory $TestDrive `
                 -SkipWorkflow -SkipGate
-        } | Should -Throw '*not rooted*'
+        } | Should -Throw '*single directory name*'
         Test-Path -LiteralPath (Join-Path $projectDir 'docusaurus.config.ts') | Should -BeFalse
     }
 
     It "rejects a '..' segment in -DocsDirectory before writing anything" {
+        # Same reasoning as the rooted case: '../evil' contains a path
+        # separator, so the single-directory-name check catches it first.
         $projectDir = Join-Path $TestDrive 'invalid-traversal'
         {
             & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory '../evil' `
                 -SkipWorkflow -SkipGate
-        } | Should -Throw "*must not contain '..' segments*"
+        } | Should -Throw '*single directory name*'
     }
 
     It 'rejects a whitespace-only -DocsDirectory before writing anything' {
+        # Whitespace is rejected by the whitespace-or-quotes check before
+        # Resolve-ContainedProjectDirectory's own empty-value check runs.
         $projectDir = Join-Path $TestDrive 'invalid-whitespace'
         {
             & $script:setupScript -ProjectDir $projectDir -Title 'Invalid' -DocsDirectory '   ' `
                 -SkipWorkflow -SkipGate
-        } | Should -Throw '*must not be empty*'
+        } | Should -Throw '*must not contain whitespace or quotes*'
     }
 
     It 'rejects -DocsDirectory resolving to the project directory itself' {
