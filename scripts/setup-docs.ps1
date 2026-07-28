@@ -348,12 +348,13 @@ function ConvertTo-YamlSingleQuotedScalar {
     .SYNOPSIS
     Serializes a string as a single-line, single-quoted YAML scalar.
 
-    Used for the no-README stub homepage's front matter. A raw, unescaped
-    -Title could otherwise contain a newline and an embedded '---', closing
-    the front matter block early and injecting fabricated keys after it --
-    confirmed against ConvertTo-DocumentationHomepage.ps1's original
-    unescaped interpolation before this fix. Collapsing newlines and doubling
-    embedded single quotes closes both paths off entirely.
+    Used for the docs/docs/index.md landing page's front matter, written when
+    routeBasePath is not '/'. A raw, unescaped -Title could otherwise contain a
+    newline and an embedded '---', closing the front matter block early and
+    injecting fabricated keys after it -- confirmed against
+    ConvertTo-DocumentationHomepage.ps1's original unescaped interpolation
+    before this fix. Collapsing newlines and doubling embedded single quotes
+    closes both paths off entirely.
     #>
     param (
         [Parameter(Mandatory)]
