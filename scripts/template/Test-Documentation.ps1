@@ -394,12 +394,21 @@ function Test-DocumentationLink {
         $lineNumber = $index + 1
         $targets = @()
 
+        # Two destination forms, because Markdown has two. An angle-bracket
+        # destination (group 1) is the only way to write a target containing a
+        # space, and a bare destination (group 2) may contain balanced
+        # parentheses. A single [^)\s]+ class covers neither: it cannot match
+        # across a space at all, so '<./some file.md>' was invisible to this
+        # check rather than reported, and it stops at the first ')', so
+        # './foo(bar).md' was captured as './foo(bar' and reported broken when
+        # it was not. Exactly one group participates in any match.
         foreach ($match in [regex]::Matches(
                 $MaskedLine[$index],
-                '!?\[[^\]]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)')) {
+                '!?\[[^\]]*\]\(\s*(?:<([^<>]*)>|((?:[^()\s]|\([^()]*\))+))(?:\s+"[^"]*")?\s*\)')) {
+            $group = if ($match.Groups[1].Success) { $match.Groups[1] } else { $match.Groups[2] }
             $targets += [pscustomobject]@{
-                Value = $match.Groups[1].Value
-                Column = $match.Groups[1].Index + 1
+                Value = $group.Value
+                Column = $group.Index + 1
             }
         }
 
