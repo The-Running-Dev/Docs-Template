@@ -240,19 +240,23 @@ plan reason about the wrong default.
       "existing config wins" guard above already uses that exact pattern, so this
       makes one shape serve both.
 
-### On adding an `index.md` under docs that redirects
+### On adding an `index.md` under docs
 
-**Not needed, and superseded by the change above.** With `routeBasePath: '/'`
-there is no `/docs/` path in the first place — docs are served from the root, and
-the README-derived index already occupies it. There is nothing to redirect.
+**Needed — but as a landing page, not a redirect.** `/docs/` is directly
+reachable: someone types it, or follows a bookmark or an old inbound link. For
+every consumer on `routeBasePath: 'docs'` it resolves today, so it must keep
+resolving. `docs/docs/index.md` stays; only its content changes, from a copy of
+the README to a genuine docs landing page. Recorded in full under "No
+duplication" above.
 
-It would only apply to a consumer who deliberately chooses `routeBasePath: 'docs'`,
-and for them `/docs/` having no page is already the decision above, with the
-navbar resolving to the first document regardless. A redirect is also the wrong
-shape for the job: a Markdown file cannot redirect. Occupying `/docs/` means a
-doc with `slug: '/'` or a file the `isCategoryIndex` convention routes there —
-which is a *landing page*, not a redirect, and is the consumer's to author if
-they want one.
+Redirect is the wrong shape regardless of the decision: a Markdown file cannot
+redirect. What puts a page on that route is the `isCategoryIndex` convention
+(`index.md` at the docs root — where setup already writes) or a doc with
+`slug: '/'`. Both produce a page; neither produces a redirect.
+
+With `routeBasePath: '/'` the question does not arise — docs are served from the
+root, the README-derived index already occupies it, and `/docs/` is not a route
+the site ever had.
 
 ### What is missing
 
@@ -298,7 +302,10 @@ has a README is untouched and reaches exactly the same code.
       first document**, not at bare `/docs/` — that path has no route by
       decision. Derive it rather than hardcoding, so it survives a
       `routeBasePath` change.
-- [ ] **Do not leave the README rendered twice** — see below.
+- [ ] **Rewrite `docs/docs/index.md` as a docs landing page** when
+      `routeBasePath !== '/'` — project name, a line, links into the sections.
+      Not the README, and not deleted: the file keeps `/docs/` resolving for the
+      consumers who have it today.
 - [ ] Point the `DocumentationRules.psd1` `GeneratedFiles` drift check at the new
       path, so the root page stays in sync with the README the way
       `docs/docs/index.md` does today.
@@ -307,16 +314,30 @@ has a README is untouched and reaches exactly the same code.
 
 ### No duplication: the README renders once
 
-**Decided:** the README-derived page exists at `/` only. `setup-docs.ps1` stops
-writing README content to `docs/docs/index.md`, and removes an existing one on
-re-run so consumers installed before this change do not keep serving the same
-text at both `/` and `/docs/`.
+**Decided:** the README's *content* is served at exactly one URL — `/`.
+`setup-docs.ps1` stops writing README content to `docs/docs/index.md`, so
+consumers do not read the same text at both `/` and `/docs/`.
 
-**Decided:** `/docs/` deliberately has no page. Every link targets a real
-document, which the broken-link checker enforces once `'throw'` is on.
+`docs/docs/index.md` is **not deleted** — it is rewritten as a docs landing page
+(see below). Replacing its content rather than removing the file is what keeps
+`/docs/` resolving for consumers who have it today.
 
-That works, with one distinction worth stating precisely, because it is easy to
-assume Docusaurus does more than it does.
+**Decided (revised 2026-07-28):** `/docs/` gets a real landing page. An earlier
+pass of this plan said it deliberately had none; that is reversed.
+
+The reason is simple and decisive: **`/docs/` is a typeable URL, and for every
+consumer on `routeBasePath: 'docs'` it resolves today** — it currently serves the
+README-derived `docs/docs/index.md`. Removing that file without replacing it
+would take a working URL and 404 it, which is the same class of regression this
+whole document exists to fix. "Nothing links to it" is not a defence against
+someone typing it, or against a bookmark, or an inbound link from before.
+
+So the no-duplication rule stands, but it is about *content*, not about the
+route: `/docs/` keeps a page, and that page stops being a copy of the README.
+
+The distinction below still matters, because it is easy to assume Docusaurus
+does more than it does — and it explains why the landing page has to be authored
+or generated rather than expected.
 
 **Docusaurus does not redirect `/docs/` to the first doc.** What it does have is
 `getMainDocId` (`plugin-content-docs/lib/docs.js:203`), which resolves a
@@ -333,10 +354,20 @@ convention rather than redirect (`isCategoryIndex`, same file, line 226):
 slugs drop the `/index` suffix, so they land on the route base — or any doc with
 `slug: '/'` in front matter.
 
-So the decision holds and costs nothing in navigation. The requirement it
-creates: **nothing may link to bare `/docs/`** — not the generated root page,
-not the navbar, not authored prose. The root page's documentation link must
-target the resolved first document, not the directory.
+So the navbar is fine either way — but a typed `/docs/` is not, and nothing in
+Docusaurus will cover for it. The page has to exist.
+
+**What goes there:** a docs landing page, generated by setup the same way the
+root page is, with content that is *not* the README. Enough to orient someone
+who typed the URL — the project name, a line, and links into the sections. Two
+supported mechanisms put a file on that route, both by convention rather than
+redirect: name it `index.md` at the docs root (the `isCategoryIndex` case), or
+give any doc `slug: '/'`. The first is what setup already writes to, so the path
+does not change — only the content does.
+
+With `routeBasePath: '/'` this question does not arise: docs are at the root,
+the README-derived index is already there, and `/docs/` is not a route the site
+ever had.
 
 ### Watch for
 
@@ -352,12 +383,11 @@ target the resolved first document, not the directory.
   ships none of its own. The existing leak warning in `docs-build.ps1` must keep
   firing for image-supplied pages, and the acceptance criteria below still
   require a build to emit no `/cv`, `/portfolio`, `/projects` or `/admin/*`.
-- **Existing consumers already have `docs/docs/index.md`.** Setup must remove it
-  on re-run, per the no-duplication decision above — otherwise every consumer
-  installed before this change serves the same README text at both `/` and
-  `/docs/`. Removal is safe for a generated file the gate already tracks; a
-  consumer who hand-edited it is the case to watch, so remove only when the
-  content still matches what the generator produces.
+- **Existing consumers already have `docs/docs/index.md`.** Setup rewrites it as
+  the docs landing page rather than deleting it, so `/docs/` keeps resolving
+  while the README stops being duplicated. The case to watch is a consumer who
+  hand-edited that file: rewrite only when its content still matches what the
+  generator produced, and leave an edited one alone.
 
 ## Alternatives considered
 
