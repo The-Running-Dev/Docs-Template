@@ -159,12 +159,94 @@ there. Symptom 2 retires the option outright — "empty by design" is not availa
 when the theme links to `/` from every page. Treat this as a correction to that
 criterion, not a new requirement.
 
-## Required fix
+## Decided approach — the consumer's README becomes the site root
 
-Ship a root that forwards to `routeBasePath`, so the bare domain resolves out of
-the box **and** the brand link resolves against the route table.
+**Decision (2026-07-28):** `/` serves the consumer's own `README.md`, and links
+into `/docs`. Not a redirect, not template copy — the project's own front page.
 
-Constraints:
+This is strictly better than the redirect options below, because it satisfies
+every constraint at once: it is a **real route** (so the broken-link checker
+accepts it and a `'throw'` consumer builds), it carries **no template-authored
+content** (it is the consumer's README), and it gives the bare domain something
+worth serving rather than a bounce to `/docs`.
+
+### What already exists
+
+Most of the machinery is built:
+
+- `ConvertTo-DocumentationHomepage.ps1` already converts a consumer's
+  `README.md` into a Docusaurus page — front matter plus the README body, with
+  absolute links to `-SiteUrl` rewritten to `-RouteBasePath` so one README is
+  correct both on the code host and on the site.
+- `setup-docs.ps1` already calls it during install, already falls back to a stub
+  when there is no README, and already registers a drift check in
+  `DocumentationRules.psd1` so the generated page cannot silently diverge from
+  the README.
+- **A consumer-supplied `src/pages` is already an anticipated case.**
+  `docs-build.ps1` strips the image's `src/pages` *before* the overlay, and says
+  why in as many words: "Checked before the overlay rather than after, so a
+  consumer supplying their own `docs/src/pages` is not mistaken for the leak."
+  The consumer's `docs/src/pages/index.md` therefore lands at
+  `/template/src/pages/index.md` and routes at `/`. `scripts/template/Dockerfile`
+  does the same strip-then-`COPY` for local preview, so both build paths agree.
+
+### What is missing
+
+The generated page goes to the wrong place, and the no-README path stops short:
+
+1. **The homepage lands at `/docs/`, not `/`.** `setup-docs.ps1` writes the
+   generated content to `$contentDir/index.md` — `docs/docs/index.md` — which
+   under the installed default `routeBasePath: 'docs'` serves at `/docs/`. The
+   README becomes the *docs* index, and the site root stays empty. This one
+   destination is the whole defect.
+2. **No README means no README is created.** With no `README.md`, setup warns and
+   writes a title-only stub at `docs/docs/index.md`. The requirement is to create
+   a real `README.md` at the **project root** — project name, a sentence, a link
+   to the docs — and generate the root page from it, so the consumer ends up with
+   a README they can grow rather than a stub buried in `docs/`.
+3. **Nothing links the root to the docs.** A README rendered at `/` has no
+   guaranteed path into `/docs`. The generated page needs a documentation link
+   the consumer did not have to write.
+
+### Work required
+
+- [ ] Write the generated homepage to `docs/src/pages/index.md` when
+      `routeBasePath !== '/'`, so it routes at `/`. Keep writing
+      `docs/docs/index.md` when `routeBasePath === '/'`, where the docs index
+      *is* the root and a second root page would collide.
+- [ ] Add a documentation link to the generated page, derived from
+      `-RouteBasePath` rather than hardcoded, so it survives a later change.
+- [ ] On no README, create `README.md` at the project root from `-Title` and
+      `-Description`, then generate from it by the normal path. Never overwrite
+      an existing README.
+- [ ] Point the `DocumentationRules.psd1` `GeneratedFiles` drift check at the new
+      path, so the root page stays in sync with the README the way
+      `docs/docs/index.md` does today.
+- [ ] Confirm `.dockerignore` and `scripts/template/dockerignore` do not exclude
+      the consumer's `docs/src/`, or the overlay never sees the file.
+
+### Watch for
+
+- **Writing outside `docs/` is new.** `setup-docs.ps1` currently confines itself
+  to the docs directory (plus workflows). Creating a root `README.md` widens
+  that. Worth an explicit switch — `-NoReadme`, mirroring `-NoHomepage` — so a
+  consumer can decline.
+- **Do not readmit the demo pages.** This deliberately uses the same
+  `src/pages` mechanism that caused the original leak. The distinction is
+  ownership: the file comes from the *consumer's* `docs/`, and the image still
+  ships none of its own. The existing leak warning in `docs-build.ps1` must keep
+  firing for image-supplied pages, and the acceptance criteria below still
+  require a build to emit no `/cv`, `/portfolio`, `/projects` or `/admin/*`.
+- **Existing consumers already have `docs/docs/index.md`.** Moving the
+  destination leaves that file behind, where it will keep serving at `/docs/`
+  and duplicate the root. Decide whether setup removes it, or whether the two
+  coexist by design — the docs section arguably still wants its own landing page.
+
+## Alternatives considered
+
+Kept for the reasoning; the decided approach above supersedes them.
+
+Constraints any fix must meet:
 
 - Must **not** reintroduce branded template content. A redirect only — no
   "Welcome" page, no marketing copy, nothing carrying the consumer's `title` that
@@ -179,22 +261,17 @@ Constraints:
 
 ### Implementation options
 
-**A. Ship `src/pages/index.tsx` in the template — recommended.** Forward `/` to the
-docs base with a `meta refresh` in `<Head>` plus a `rel=canonical`. This is the only
-option demonstrated to fix both `'warn'` and `'throw'` consumers, because it is a
-real route *and* a real file: it satisfies the broken-link checker and forwards
-without JavaScript. The template owns both this file and the installed config, so
-one shared `routeBasePath` constant can drive both, avoiding the duplication a
-consumer-side fix is forced into.
+**A. Ship a redirecting `src/pages/index.tsx` in the *template*.** Forward `/` to
+the docs base with a `meta refresh` in `<Head>` plus a `rel=canonical`. Like the
+decided approach, this is a real route, so it fixes both `'warn'` and `'throw'`
+consumers. Superseded because the page would be template-authored and would only
+bounce the visitor onward, where the decided approach serves the consumer's own
+README from a file the consumer owns and can edit.
 
-Prefer `<Head>` with a `meta refresh` over `<Redirect>` from `@docusaurus/router`:
-`<Redirect>` is client-side and emits an empty shell that only forwards after React
-hydrates.
-
-Note this reintroduces a file under `src/pages/`, which `.dockerignore:232` and
-`scripts/template/Dockerfile:17` currently strip wholesale. Both need to allow this
-one file through without readmitting the demo pages — that is the main design work
-in this option.
+Worth keeping in mind if the decided approach stalls: the mechanism is the same,
+only the content and the owner differ. Prefer `<Head>` with a `meta refresh` over
+`<Redirect>` from `@docusaurus/router` either way — `<Redirect>` is client-side and
+emits an empty shell that only forwards after React hydrates.
 
 **B. Give the navbar brand an explicit `href`.** Set `navbar.logo.href` to the docs
 base in the installed config. This removes the broken link at its source, which is
@@ -227,9 +304,14 @@ viable behind a flag or a major version.
 ### Acceptance criteria
 
 - With default `routeBasePath: 'docs'`, a consumer build emits a root that
-  resolves — request `/`, land on the docs homepage.
+  resolves — request `/`, land on a page rendered from that project's
+  `README.md`, carrying a working link to `/docs`.
+- A project with no `README.md` gets one created at its root, and the site root
+  renders from it. An existing README is never overwritten.
 - A consumer that sets `onBrokenLinks: 'throw'` builds successfully with no
   authored changes.
+- Editing the README and re-running the gate reports drift until the root page
+  is regenerated, exactly as `docs/docs/index.md` behaves today.
 - No page reports a broken link to `/`, including `404.html`.
 - With `routeBasePath: '/'`, no redirect artifact is emitted and `/` is the docs
   homepage directly (no redirect loop).
