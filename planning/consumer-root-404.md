@@ -190,6 +190,31 @@ Most of the machinery is built:
   `/template/src/pages/index.md` and routes at `/`. `scripts/template/Dockerfile`
   does the same strip-then-`COPY` for local preview, so both build paths agree.
 
+### Who this actually affects — `routeBasePath` is already a parameter
+
+`setup-docs.ps1` already exposes `-RouteBasePath` (#47), and it **already
+defaults to `/`**. The `routeBasePath: 'docs'` in
+`scripts/template/docusaurus.config.ts` is a substitution placeholder, not the
+installed default — setup rewrites it with the effective value. There is also a
+guard: when `-RouteBasePath` is not passed explicitly and a config already
+exists, that project's current value wins, so re-running with `-Overwrite` to
+pick up an upstream fix cannot move a project's URLs.
+
+That scopes this defect more narrowly than it first appears:
+
+| `routeBasePath` | What serves `/` | Affected? |
+| --- | --- | --- |
+| `/` (the default) | the docs index — `docs/docs/index.md`, generated from the README | **No.** Root resolves; nothing to fix |
+| `docs` or any custom value | nothing | **Yes.** Root 404s, brand link breaks sitewide |
+
+So a *fresh default install* is already correct, and the README already becomes
+the root page. The consumers that broke — `SubZeroDev.WinGet`,
+`SubZeroDev.GameEngine` — are on `routeBasePath: 'docs'`, either chosen
+deliberately or preserved by the guard above from an install that predates #47.
+
+This is why the work below is conditional on `routeBasePath !== '/'`: the `/`
+case needs no new destination, because the docs index already *is* the root.
+
 ### What is missing
 
 The generated page goes to the wrong place, and the no-README path stops short:
@@ -230,8 +255,10 @@ has a README is untouched and reaches exactly the same code.
       `routeBasePath !== '/'`, so it routes at `/`. Keep `docs/docs/index.md` as
       the destination when `routeBasePath === '/'`, where the docs index *is*
       the root and a second root page would collide.
-- [ ] Add a documentation link to the generated page, derived from
-      `-RouteBasePath` rather than hardcoded, so it survives a later change.
+- [ ] Add a documentation link to the generated page, pointing at the **resolved
+      first document**, not at bare `/docs/` — that path has no route by
+      decision. Derive it rather than hardcoding, so it survives a
+      `routeBasePath` change.
 - [ ] **Do not leave the README rendered twice** — see below.
 - [ ] Point the `DocumentationRules.psd1` `GeneratedFiles` drift check at the new
       path, so the root page stays in sync with the README the way
@@ -246,17 +273,31 @@ writing README content to `docs/docs/index.md`, and removes an existing one on
 re-run so consumers installed before this change do not keep serving the same
 text at both `/` and `/docs/`.
 
-One consequence to settle when implementing: with `routeBasePath: 'docs'` and no
-`docs/index.md`, **nothing answers `/docs/` itself** — Docusaurus does not
-redirect a docs root to its first sidebar entry. Either
+**Decided:** `/docs/` deliberately has no page. Every link targets a real
+document, which the broken-link checker enforces once `'throw'` is on.
 
-- give the docs section a real landing page of its own (a short index, or a
-  `generated-index` category link) that is *not* the README — this keeps `/docs/`
-  meaningful and is the likely right answer; or
-- accept that `/docs/` has no page and ensure every link targets a real document,
-  which the broken-link checker will enforce once `'throw'` is on.
+That works, with one distinction worth stating precisely, because it is easy to
+assume Docusaurus does more than it does.
 
-Pick one deliberately rather than discovering it from a 404.
+**Docusaurus does not redirect `/docs/` to the first doc.** What it does have is
+`getMainDocId` (`plugin-content-docs/lib/docs.js:203`), which resolves a
+plugin's "main doc" as: the doc with `slug: '/'`, else **the first doc of the
+first sidebar**, else any doc. That resolution is what a navbar
+`type: 'docSidebar'` or `type: 'doc'` item links to — and the installed config
+uses exactly that item type. So the navbar "Docs" link lands on the first
+sidebar document, by its own URL, with no index page needed.
+
+What it does *not* do is give the bare `/docs/` path a route. Typed directly, it
+404s unless some doc occupies it. Two things put a doc there, both by
+convention rather than redirect (`isCategoryIndex`, same file, line 226):
+`index.md`, `readme.md`, or `<folder>/<folder>.md` at the docs root — their
+slugs drop the `/index` suffix, so they land on the route base — or any doc with
+`slug: '/'` in front matter.
+
+So the decision holds and costs nothing in navigation. The requirement it
+creates: **nothing may link to bare `/docs/`** — not the generated root page,
+not the navbar, not authored prose. The root page's documentation link must
+target the resolved first document, not the directory.
 
 ### Watch for
 
