@@ -27,7 +27,14 @@
     present locally it is pulled.
 
 .PARAMETER ProjectDir
-    Project directory containing ./docs. Defaults to the current directory.
+    Project directory containing the docs overlay. Defaults to the current
+    directory.
+
+.PARAMETER DocsDirectory
+    The overlay directory to bind-mount, relative to -ProjectDir. Defaults to
+    'docs' -- pass the same value given to setup-docs.ps1's -DocsDirectory so
+    this preview mounts the project's actual overlay rather than a stale
+    default.
 
 .EXAMPLE
     ./scripts/preview-docs.ps1          # serve http://localhost:3000/docs with hot reload
@@ -39,7 +46,8 @@
 param(
     [Parameter()][int]$Port = 3000,
     [Parameter()][string]$Tag = 'ghcr.io/the-running-dev/docs-template:latest',
-    [Parameter()][string]$ProjectDir = '.'
+    [Parameter()][string]$ProjectDir = '.',
+    [Parameter()][ValidateNotNullOrEmpty()][string]$DocsDirectory = 'docs'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,10 +61,10 @@ if (-not (Test-Path -LiteralPath $ProjectDir)) {
 }
 
 $root = (Resolve-Path -LiteralPath $ProjectDir).Path
-$docsDir = Join-Path $root 'docs'
+$docsDir = Join-Path $root $DocsDirectory
 
 if (-not (Test-Path -LiteralPath $docsDir)) {
-    throw "No docs/ directory at '$docsDir'. Run scripts/setup-docs.ps1 first to scaffold it."
+    throw "No '$DocsDirectory' directory at '$docsDir'. Run scripts/setup-docs.ps1 first to scaffold it."
 }
 
 # Ensure the image exists locally; pull it if not.

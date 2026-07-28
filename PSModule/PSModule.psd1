@@ -145,6 +145,12 @@
                     Mandatory = $false
                     Description = 'Discovered from ProjectDir.'
                 }
+                @{
+                    Name = 'DocsDirectory'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'The overlay directory to bind-mount, relative to ProjectDir. Defaults to ''docs''; pass the same value given to Invoke-SetupDocs.'
+                }
             )
         }
         @{
@@ -200,6 +206,12 @@
                     Type = 'String'
                     Mandatory = $false
                     Description = 'Discovered from ProjectDir.'
+                }
+                @{
+                    Name = 'DocsDirectory'
+                    Type = 'String'
+                    Mandatory = $false
+                    Description = 'Where the Docusaurus overlay is installed, relative to the project. Defaults to ''docs''. An existing installation is detected and preserved unless this is passed explicitly, naming a different directory than the one already installed is refused rather than migrated.'
                 }
                 @{
                     Name = 'Title'
