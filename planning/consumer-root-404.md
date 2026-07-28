@@ -215,6 +215,45 @@ deliberately or preserved by the guard above from an install that predates #47.
 This is why the work below is conditional on `routeBasePath !== '/'`: the `/`
 case needs no new destination, because the docs index already *is* the root.
 
+#### Align the template literal with the real default
+
+**Decided:** change `scripts/template/docusaurus.config.ts` from
+`routeBasePath: 'docs'` to `routeBasePath: '/'`.
+
+The literal is a leftover from before #47, when there was no substitution and
+the file was installed verbatim — which is why the two affected downstreams are
+on `'docs'` at all. Now that setup substitutes it, the file reads as though
+`'docs'` were the default when the default is `'/'`. That discrepancy is not
+harmless: it is what made both the downstream report and the first pass of this
+plan reason about the wrong default.
+
+- [ ] Change the literal to `routeBasePath: '/'`.
+- [ ] **In the same commit**, change the substitution key in `setup-docs.ps1`
+      (`$configReplacements`, ~line 588). It matches the exact string
+      `routeBasePath: 'docs'`, and `Copy-TemplateFile` applies it with
+      `String.Replace` (line 286), which **returns the string unchanged when the
+      key is absent** — no error, no warning. Change one without the other and
+      `-RouteBasePath` silently stops working while every install still looks
+      successful.
+- [ ] Better: replace the literal key with a regex substitution on
+      `routeBasePath:\s*'[^']*'`, so the two can never drift apart again. The
+      "existing config wins" guard above already uses that exact pattern, so this
+      makes one shape serve both.
+
+### On adding an `index.md` under docs that redirects
+
+**Not needed, and superseded by the change above.** With `routeBasePath: '/'`
+there is no `/docs/` path in the first place — docs are served from the root, and
+the README-derived index already occupies it. There is nothing to redirect.
+
+It would only apply to a consumer who deliberately chooses `routeBasePath: 'docs'`,
+and for them `/docs/` having no page is already the decision above, with the
+navbar resolving to the first document regardless. A redirect is also the wrong
+shape for the job: a Markdown file cannot redirect. Occupying `/docs/` means a
+doc with `slug: '/'` or a file the `isCategoryIndex` convention routes there —
+which is a *landing page*, not a redirect, and is the consumer's to author if
+they want one.
+
 ### What is missing
 
 The generated page goes to the wrong place, and the no-README path stops short:
