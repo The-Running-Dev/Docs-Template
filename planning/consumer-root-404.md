@@ -210,37 +210,74 @@ The generated page goes to the wrong place, and the no-README path stops short:
 
 ### Work required
 
-- [ ] Write the generated homepage to `docs/src/pages/index.md` when
-      `routeBasePath !== '/'`, so it routes at `/`. Keep writing
-      `docs/docs/index.md` when `routeBasePath === '/'`, where the docs index
-      *is* the root and a second root page would collide.
+**One path, not two** (decided 2026-07-28). Today `setup-docs.ps1` branches: a
+README generates a page, no README writes a title-only stub. Both branches
+disappear. Setup guarantees a README exists, then a single generation path runs
+— and because the guarantee is "create only when absent", a project that already
+has a README is untouched and reaches exactly the same code.
+
+- [ ] **Ensure a README, then generate.** If `README.md` is absent at the project
+      root, create it from `-Title` and `-Description` — project name, a
+      sentence, a link to the docs. Never overwrite an existing one. Then run the
+      normal generation path over it.
+- [ ] **Delete the stub branch** in `setup-docs.ps1` (the
+      `elseif (-not (Test-Path $indexPath))` block that writes a title-only
+      `index.md`). With a README always present it is unreachable, and it was
+      only ever a worse copy of the generator's output.
+- [ ] Drop the "No README.md found; skipping homepage generation" warning with
+      it — nothing is skipped any more.
+- [ ] **Write the generated page to `docs/src/pages/index.md`** when
+      `routeBasePath !== '/'`, so it routes at `/`. Keep `docs/docs/index.md` as
+      the destination when `routeBasePath === '/'`, where the docs index *is*
+      the root and a second root page would collide.
 - [ ] Add a documentation link to the generated page, derived from
       `-RouteBasePath` rather than hardcoded, so it survives a later change.
-- [ ] On no README, create `README.md` at the project root from `-Title` and
-      `-Description`, then generate from it by the normal path. Never overwrite
-      an existing README.
+- [ ] **Do not leave the README rendered twice** — see below.
 - [ ] Point the `DocumentationRules.psd1` `GeneratedFiles` drift check at the new
       path, so the root page stays in sync with the README the way
       `docs/docs/index.md` does today.
 - [ ] Confirm `.dockerignore` and `scripts/template/dockerignore` do not exclude
       the consumer's `docs/src/`, or the overlay never sees the file.
 
+### No duplication: the README renders once
+
+**Decided:** the README-derived page exists at `/` only. `setup-docs.ps1` stops
+writing README content to `docs/docs/index.md`, and removes an existing one on
+re-run so consumers installed before this change do not keep serving the same
+text at both `/` and `/docs/`.
+
+One consequence to settle when implementing: with `routeBasePath: 'docs'` and no
+`docs/index.md`, **nothing answers `/docs/` itself** — Docusaurus does not
+redirect a docs root to its first sidebar entry. Either
+
+- give the docs section a real landing page of its own (a short index, or a
+  `generated-index` category link) that is *not* the README — this keeps `/docs/`
+  meaningful and is the likely right answer; or
+- accept that `/docs/` has no page and ensure every link targets a real document,
+  which the broken-link checker will enforce once `'throw'` is on.
+
+Pick one deliberately rather than discovering it from a 404.
+
 ### Watch for
 
-- **Writing outside `docs/` is new.** `setup-docs.ps1` currently confines itself
-  to the docs directory (plus workflows). Creating a root `README.md` widens
-  that. Worth an explicit switch — `-NoReadme`, mirroring `-NoHomepage` — so a
-  consumer can decline.
+- **Writing outside `docs/` is new**, but narrowly. `setup-docs.ps1` currently
+  confines itself to the docs directory (plus workflows), and creating a root
+  `README.md` widens that. No opt-out switch: "only when absent" is the guard.
+  Setup never touches a README a project already has, and a project without one
+  had nothing to lose. `-NoHomepage` still covers the case of wanting no
+  generated page at all.
 - **Do not readmit the demo pages.** This deliberately uses the same
   `src/pages` mechanism that caused the original leak. The distinction is
   ownership: the file comes from the *consumer's* `docs/`, and the image still
   ships none of its own. The existing leak warning in `docs-build.ps1` must keep
   firing for image-supplied pages, and the acceptance criteria below still
   require a build to emit no `/cv`, `/portfolio`, `/projects` or `/admin/*`.
-- **Existing consumers already have `docs/docs/index.md`.** Moving the
-  destination leaves that file behind, where it will keep serving at `/docs/`
-  and duplicate the root. Decide whether setup removes it, or whether the two
-  coexist by design — the docs section arguably still wants its own landing page.
+- **Existing consumers already have `docs/docs/index.md`.** Setup must remove it
+  on re-run, per the no-duplication decision above — otherwise every consumer
+  installed before this change serves the same README text at both `/` and
+  `/docs/`. Removal is safe for a generated file the gate already tracks; a
+  consumer who hand-edited it is the case to watch, so remove only when the
+  content still matches what the generator produces.
 
 ## Alternatives considered
 
@@ -307,7 +344,9 @@ viable behind a flag or a major version.
   resolves — request `/`, land on a page rendered from that project's
   `README.md`, carrying a working link to `/docs`.
 - A project with no `README.md` gets one created at its root, and the site root
-  renders from it. An existing README is never overwritten.
+  renders from it. An existing README is never overwritten, and reaches the same
+  generation path as a created one — there is no second code path to diverge.
+- The README's content is served at exactly one URL. `/docs/` does not repeat it.
 - A consumer that sets `onBrokenLinks: 'throw'` builds successfully with no
   authored changes.
 - Editing the README and re-running the gate reports drift until the root page
