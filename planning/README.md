@@ -6,7 +6,7 @@ to fix it, and how to tell when it is fixed.
 
 | File | Status | What it covers |
 | --- | --- | --- |
-| `consumer-root-404.md` | Open | Nothing routes `/`: consumers 404 at the root and carry a broken brand link on every page |
+| `consumer-root-404.md` | Done (#52) | Nothing routes `/`: consumers 404 at the root and carry a broken brand link on every page |
 | `duplicate-homepage-route.md` | Open | `src/pages/index.md` and `index.tsx` both claim `/` |
 | `test-health.md` | Open | `pnpm test` red on a fresh clone; `testing.md` thresholds disagree with the config |
 | `committed-credentials.md` | Open | `cookies.txt` JWT and `api/test-login.json` are tracked in git |

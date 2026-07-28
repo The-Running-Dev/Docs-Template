@@ -1,6 +1,6 @@
 # docs-template — nothing routes `/`, so consumers 404 at the root and carry a broken brand link on every page
 
-**Status:** Open
+**Status:** Done (#51 decided the fix, #52 shipped it)
 **Severity:** **high.** Silently breaks the canonical URL of every consumer site
 using the default `routeBasePath`, puts a broken link on every page of every
 consumer site, and is **build-breaking** for any consumer that sets
@@ -10,6 +10,29 @@ consumer site, and is **build-breaking** for any consumer that sets
 `The-Running-Dev/SubZeroDev.WinGet`; navbar symptom found via
 `The-Running-Dev/SubZeroDev.GameEngine` (deploy broken) and reproduced against
 `SubZeroDev.WinGet` (silently affected)
+
+## Shipped
+
+`/` now serves the project's own `README.md` — a real route, generated to
+`docs/src/pages/index.md` for any `routeBasePath` other than `/`, where the
+docs index was already the root. `docs/docs/index.md` stopped duplicating the
+README and became a minimal landing page instead, so `/docs/` keeps resolving
+for every consumer who has it today. `scripts/template/docusaurus.config.ts`'s
+`routeBasePath` literal was corrected from `'docs'` to `'/'`, safe only because
+the substitution that reads it was made regex-based first (`#52`, commit 1) so
+the two could not silently drift apart.
+
+Kept here rather than deleted: `SubZeroDev.WinGet` and `SubZeroDev.GameEngine`
+have not yet picked this up (that needs a new base image plus
+`Invoke-SetupDocs -Overwrite` in each repository — separate work, not tracked
+here), and the mechanism analysis below is what the next related bug in
+`Copy-TemplateFile` or the homepage generator will want. Delete once neither is
+true.
+
+Everything below is the pre-fix record: how the bug was found, why the earlier
+options were rejected, and the reasoning the fix in #52 is built on.
+
+---
 
 Follow-up to the `src/pages` leakage fix. That fix is **confirmed working** — this
 is the side effect it introduced.
