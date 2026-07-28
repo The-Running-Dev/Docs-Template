@@ -44,6 +44,12 @@
     # Set SiteUrl to the published origin, with a trailing slash, so absolute
     # links in the README resolve to site-relative links on the homepage.
     #
+    # Path here follows Arguments.RouteBasePath: 'docs/docs/index.md' when it
+    # is '/' (the README becomes the docs index), or 'docs/src/pages/index.md'
+    # for any other value (the README becomes the site root instead, since
+    # nothing else routes '/' at a non-root routeBasePath). setup-docs.ps1
+    # substitutes both together from the same value, so they cannot disagree.
+    #
     # The start/end markers above and below are load-bearing: setup-docs.ps1
     # locates this exact block by those two comment lines to remove it entirely
     # when -NoHomepage is passed. Keep them if you edit this block by hand.
