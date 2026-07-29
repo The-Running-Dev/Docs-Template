@@ -254,9 +254,11 @@ Candidate fixes, not yet chosen:
 - **Leave it.** Nothing breaks outright and it has been this way for a while.
 
 - [ ] Decide between the approaches above.
-- [ ] If scoping the docs: update `README.md`, `AGENTS.md`,
-      `docs/getting-started/quick-start.md`, and `src/pages/index.md` together,
-      since all four carry the same claim.
+- [ ] If scoping the docs: update `README.md`, `AGENTS.md`, and
+      `docs/getting-started/quick-start.md` together, since all three carry
+      the same claim. `src/pages/index.md` — the fourth file this item
+      originally listed — is gone; it duplicated `/` with `index.tsx` and was
+      deleted for that reason, which incidentally removes one of the four.
 
 Acceptance criteria:
 
