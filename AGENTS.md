@@ -43,9 +43,8 @@
     (all in `src/components/Projects/`). Follow the pattern of the directory you
     are working in, and see TODO P1.10 for the pending decision.
 - Coverage thresholds: see `vitest.config.ts` for the authoritative values.
-  - ⚠️ This file and `testing.md` both previously claimed 75/70/60/75; the config
-    is 55/55/45/55. Read the config, not the prose. TODO P0.2 tracks the fix.
-- Run locally: `pnpm test` or `pnpm test:run` before PRs.
+- Run locally: `pnpm test` or `pnpm test:run` before PRs. `api/` is a separate
+  pnpm workspace excluded from this run; use `pnpm test:api` for it.
 
 ## Commit & Pull Request Guidelines
 
