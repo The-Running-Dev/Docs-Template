@@ -9,7 +9,7 @@ to fix it, and how to tell when it is fixed.
 | `consumer-root-404.md` | Done (#52) | Nothing routes `/`: consumers 404 at the root and carry a broken brand link on every page |
 | `duplicate-homepage-route.md` | Open | `src/pages/index.md` and `index.tsx` both claim `/` |
 | `test-health.md` | Open | `pnpm test` red on a fresh clone; `testing.md` thresholds disagree with the config |
-| `committed-credentials.md` | Open | `cookies.txt` JWT and `api/test-login.json` are tracked in git |
+| `committed-credentials.md` | Done (#61) | `cookies.txt` JWT and `api/test-login.json` are tracked in git |
 | `build-warnings.md` | Open | Prebuild warns on every run; broken links cannot fail a build |
 | `docs-drift.md` | Open | Stale 3.8.1 claims, undocumented components, uncategorized guides |
 
