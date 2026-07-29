@@ -11,5 +11,4 @@ README-Organization.md
 vscode.code-workspace
 
 docs/**
-src/pages/index.md
 src/pages/demos/**
