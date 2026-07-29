@@ -170,3 +170,11 @@ data/index.ts
 # removed -- and neither is ever worth keeping.
 *.orig
 *.rej
+
+# Local API debug artifacts -- a curl cookie jar and a login payload
+# containing a real (if expired) JWT and admin/admin credentials were
+# committed here before (see api/README.md's "Hand-testing auth" note for
+# the untracked way to do this). *.local.json covers the naming convention
+# that note recommends, not just the one filename that was tracked.
+cookies.txt
+api/*.local.json

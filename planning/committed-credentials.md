@@ -1,6 +1,6 @@
 # docs-template — debug credentials are tracked in git
 
-**Status:** Open
+**Status:** Done (#61)
 **Severity:** high as hygiene, low as live risk — the token is expired and
 localhost-scoped, but tracked credential files invite a live one next time
 **Labels:** `bug`, `security`

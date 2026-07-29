@@ -35,6 +35,21 @@ Auth
 
 - Set env `ADMIN_TOKEN` to require `x-admin-token` header for write/delete.
 
+Hand-testing auth (`/api/auth/login`, distinct from `ADMIN_TOKEN` above)
+
+- Don't write the request body or the cookie jar to a tracked path -- a
+  cookie jar and a login payload were committed here before, holding a real
+  (if expired) JWT and hardcoded `admin`/`admin` credentials.
+- Pass the body inline, and write the cookie jar somewhere untracked
+  (`api/*.local.json` is gitignored, or use `/dev/null` if you don't need the
+  cookie):
+
+  ```bash
+  curl -c api/cookies.local.json -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin"}' \
+    http://localhost:4000/api/auth/login
+  ```
+
 Environment
 
 - `PORT` (default 4000)
