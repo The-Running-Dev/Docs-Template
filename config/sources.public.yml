@@ -1,0 +1,17 @@
+version: 1
+sources:
+  projects:
+    at: runtime
+    url: https://the-running-dev.github.io/Data/portfolio/projects.json
+    schema: projects
+    cache: manual
+  portfolio:
+    at: runtime
+    url: https://the-running-dev.github.io/Data/portfolio/portfolioData.json
+    schema: portfolio
+    cache: manual
+  cv:
+    at: runtime
+    url: https://the-running-dev.github.io/Data/portfolio/cvData.json
+    schema: cv
+    cache: { ttlMs: 300000 }

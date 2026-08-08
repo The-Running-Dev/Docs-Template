@@ -38,14 +38,6 @@ features:
   dataCaching: true
   adminUI: false
 
-# Configure HTTP sources (served by local API)
-projectsPage:
-  #source: http://localhost:4000/api/v1/projects
-  source: https://the-running-dev.github.io/Data/portfolio/projects.json
-
-portfolioPage:
-  #source: http://localhost:4000/api/v1/portfolioData
-  source: https://the-running-dev.github.io/Data/portfolio/portfolioData.json
-
-cvPage:
-  source: https://the-running-dev.github.io/Data/portfolio/cvData.json
+# HTTP sources for projectsPage, portfolioPage, and cvPage now live in
+# config/sources.public.yml (ids: projects, portfolio, cv), read through
+# subzerodev-data-json rather than a `.source` key here.

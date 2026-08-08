@@ -2,7 +2,7 @@
   "compilerOptions": {
     // Override settings specific to pre-build script
     "target": "ES2020",
-    "module": "CommonJS",
+    "module": "ESNext",
     "jsx": "react-jsx",
     "outDir": "./build",
     "rootDir": "..",
@@ -17,7 +17,12 @@
     "skipLibCheck": true,
 
     // Node.js specific settings
-    "moduleResolution": "node",
+    // "bundler" (not "node"): subzerodev-data-json is exports-map-only and
+    // classic "node" resolution can't see its subpaths (e.g. `/node`, `/zod`).
+    // This only affects `tsc --noEmit` type-checking (prebuild:check) — the
+    // actual pre-build script always runs through tsx, which ignores this
+    // file's `module`/`moduleResolution` for its own esbuild-based transform.
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

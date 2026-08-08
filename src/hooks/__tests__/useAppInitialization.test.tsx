@@ -7,8 +7,7 @@ describe('useAppInitialization', () => {
     vi.resetModules();
   });
 
-  it('loads only enabled features', async () => {
-    // Partially mock to keep enums/mapping while overriding hook
+  it('preloads only enabled features', async () => {
     vi.doMock('../../config/FeaturesConfig', async () => {
       const actual = await vi.importActual<any>('../../config/FeaturesConfig');
       return {
@@ -21,25 +20,25 @@ describe('useAppInitialization', () => {
       };
     });
 
-    // Spy on DataLoader.loadMultipleData
-    const mod = await import('../../services/dataLoader');
-    const spy = vi.spyOn(mod.DataLoader.prototype, 'loadMultipleData').mockResolvedValue();
+    const preload = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('../../data/jsonLoader', () => ({
+      getJsonLoader: () => ({ preload })
+    }));
 
     const { useAppInitialization } = await import('../useAppInitialization');
     renderHook(() => useAppInitialization());
 
     await waitFor(() => {
-      expect(spy).toHaveBeenCalled();
+      expect(preload).toHaveBeenCalled();
     }, { timeout: 1000 });
 
-    // Should only be called once (or verify the latest call has correct data)
-    const lastCallIndex = spy.mock.calls.length - 1;
-    const arg = spy.mock.calls[lastCallIndex][0] as Array<{ key: string }>;
-    const keys = arg.map((a) => a.key).sort();
-    expect(keys).toEqual(['portfolio']);
+    expect(preload.mock.calls[preload.mock.calls.length - 1][0]).toEqual([
+      'portfolio'
+    ]);
   });
 
-  it('loads both when both features enabled', async () => {
+  it('preloads both when both features enabled', async () => {
     vi.doMock('../../config/FeaturesConfig', async () => {
       const actual = await vi.importActual<any>('../../config/FeaturesConfig');
       return {
@@ -48,21 +47,43 @@ describe('useAppInitialization', () => {
       };
     });
 
-    const mod = await import('../../services/dataLoader');
-    const spy = vi.spyOn(mod.DataLoader.prototype, 'loadMultipleData').mockResolvedValue();
+    const preload = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('../../data/jsonLoader', () => ({
+      getJsonLoader: () => ({ preload })
+    }));
 
     const { useAppInitialization } = await import('../useAppInitialization');
     renderHook(() => useAppInitialization());
 
     await waitFor(() => {
-      expect(spy).toHaveBeenCalled();
+      expect(preload).toHaveBeenCalled();
     }, { timeout: 1000 });
 
-    const lastCallIndex = spy.mock.calls.length - 1;
-    const arg = spy.mock.calls[lastCallIndex][0] as Array<{ key: string }>;
-    const keys = arg.map((a) => a.key).sort();
-    expect(keys).toEqual(['portfolio', 'projects']);
+    const arg = preload.mock.calls[preload.mock.calls.length - 1][0] as string[];
+    expect([...arg].sort()).toEqual(['portfolio', 'projects']);
+  });
+
+  it('does not preload when no relevant feature is enabled', async () => {
+    vi.doMock('../../config/FeaturesConfig', async () => {
+      const actual = await vi.importActual<any>('../../config/FeaturesConfig');
+      return {
+        ...actual,
+        useFeaturesConfig: vi.fn(() => ({ portfolioPage: false, projectsPage: false }))
+      };
+    });
+
+    const preload = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('../../data/jsonLoader', () => ({
+      getJsonLoader: () => ({ preload })
+    }));
+
+    const { useAppInitialization } = await import('../useAppInitialization');
+    renderHook(() => useAppInitialization());
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(preload).not.toHaveBeenCalled();
   });
 });
-
-
