@@ -21,6 +21,8 @@ web_modules/
 
 # Package outputs
 *.tgz
+# Exception: vendored dependency tarball, see vendor/README.md
+!vendor/*.tgz
 
 # =============================================================================
 # LOGS AND DIAGNOSTICS

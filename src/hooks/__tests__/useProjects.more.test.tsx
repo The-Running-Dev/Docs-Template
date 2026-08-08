@@ -22,6 +22,27 @@ const sampleData = [
   }
 ] as any;
 
+function mockJsonResult(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    reason: 'json.ok',
+    data: sampleData,
+    meta: {
+      id: 'projects',
+      provider: 'http',
+      location: 'https://example.com/projects.json',
+      bytes: 100,
+      digest: null,
+      cached: false,
+      attempts: 1,
+      validated: false
+    },
+    loading: false,
+    refetch: vi.fn(),
+    ...overrides
+  };
+}
+
 describe('hooks/useProjects (root)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -31,14 +52,11 @@ describe('hooks/useProjects (root)', () => {
   });
 
   it('provides tag/category helpers and recent projects window', async () => {
-    // Mock store to provide projects data
-    await vi.doMock('../../store/dataStore', () => ({
-      useDataStore: () => ({
-        getData: (key: string) => (key === 'projects' ? sampleData : null),
-        isLoading: () => false,
-        getError: () => null,
-        getMetadata: () => ({ source: 'static' })
-      })
+    vi.doMock('subzerodev-data-json/react', () => ({
+      useJson: () => mockJsonResult()
+    }));
+    vi.doMock('../../config/schemas', () => ({
+      projectsSchema: (raw: unknown) => ({ ok: true, value: raw })
     }));
 
     const { useProjects } = await import('../useProjects');
@@ -65,13 +83,17 @@ describe('hooks/useProjects (root)', () => {
   });
 
   it('returns safe defaults when no data', async () => {
-    await vi.doMock('../../store/dataStore', () => ({
-      useDataStore: () => ({
-        getData: () => null,
-        isLoading: () => false,
-        getError: () => null,
-        getMetadata: () => undefined
-      })
+    vi.doMock('subzerodev-data-json/react', () => ({
+      useJson: () =>
+        mockJsonResult({
+          ok: false,
+          reason: 'json.unresolved',
+          message: 'no source',
+          data: null
+        })
+    }));
+    vi.doMock('../../config/schemas', () => ({
+      projectsSchema: (raw: unknown) => ({ ok: true, value: raw })
     }));
 
     const { useProjects } = await import('../useProjects');
@@ -80,5 +102,3 @@ describe('hooks/useProjects (root)', () => {
     expect(stats).toEqual({ totalProjects: 0, recentProjects: 0, totalTechnologies: 0, averageAge: 'N/A' });
   });
 });
-
-

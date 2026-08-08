@@ -20,43 +20,108 @@ vi.mock('../components', () => ({
   TechStack: ({ technologies }: any) => <div data-testid="Tech">{technologies?.length}</div>
 }));
 
-import { useDataStore } from '../../../store/dataStore';
+function pendingResult(id: string) {
+  return {
+    ok: false as const,
+    reason: 'json.unresolved' as const,
+    message: 'loading',
+    data: null,
+    meta: {
+      id,
+      provider: 'none' as const,
+      location: '',
+      bytes: 0,
+      digest: null,
+      cached: false,
+      attempts: 0,
+      validated: false
+    },
+    loading: true,
+    refetch: vi.fn()
+  };
+}
+
+function okResult(id: string, data: unknown) {
+  return {
+    ok: true as const,
+    reason: 'json.ok' as const,
+    data,
+    meta: {
+      id,
+      provider: 'http' as const,
+      location: `https://example.com/${id}.json`,
+      bytes: 10,
+      digest: null,
+      cached: false,
+      attempts: 1,
+      validated: false
+    },
+    loading: false,
+    refetch: vi.fn()
+  };
+}
+
+function errorResult(id: string, message: string) {
+  return {
+    ok: false as const,
+    reason: 'json.transport' as const,
+    message,
+    data: null,
+    meta: {
+      id,
+      provider: 'none' as const,
+      location: '',
+      bytes: 0,
+      digest: null,
+      cached: false,
+      attempts: 1,
+      validated: false
+    },
+    loading: false,
+    refetch: vi.fn()
+  };
+}
+
+let portfolioResult: any = pendingResult('portfolio');
+let projectsResult: any = okResult('projects', []);
+
+vi.mock('subzerodev-data-json/react', () => ({
+  useJson: (id: string) => (id === 'portfolio' ? portfolioResult : projectsResult)
+}));
+
+vi.mock('../../../config/schemas', () => ({
+  portfolioSchema: (raw: unknown) => ({ ok: true, value: raw }),
+  projectsSchema: (raw: unknown) => ({ ok: true, value: raw })
+}));
 
 import Portfolio from '../Portfolio';
 
 describe('Portfolio', () => {
   beforeEach(() => {
-    const store = useDataStore.getState();
-    // Reset store state for portfolio key
-    store.clearData('portfolio');
-    store.setLoading('portfolio', false);
-    store.setError('portfolio', null);
+    portfolioResult = pendingResult('portfolio');
+    projectsResult = okResult('projects', []);
   });
 
   it('shows loading', () => {
-    const store = useDataStore.getState();
-    store.setLoading('portfolio', true);
+    portfolioResult = pendingResult('portfolio');
     render(<Portfolio />);
     expect(screen.getByText(/Loading Portfolio/)).toBeInTheDocument();
   });
 
   it('shows error', () => {
-    const store = useDataStore.getState();
-    store.setError('portfolio', new Error('boom'));
+    portfolioResult = errorResult('portfolio', 'boom');
     render(<Portfolio />);
     expect(screen.getByText(/Error Loading Portfolio: boom/)).toBeInTheDocument();
   });
 
   it('shows empty when no header', () => {
-    const store = useDataStore.getState();
-    store.setData('portfolio', {});
+    portfolioResult = okResult('portfolio', {});
     render(<Portfolio />);
     expect(screen.getByText(/No Portfolio Data Found/)).toBeInTheDocument();
   });
 
   it('renders header and sections with data', () => {
-    const store = useDataStore.getState();
-    store.setData('portfolio', {
+    portfolioResult = okResult('portfolio', {
       header: { title: 'My Portfolio', subtitle: 'Sub' },
       stats: [{}, {}],
       projects: [{ category: 'Web', subCategories: [] }],

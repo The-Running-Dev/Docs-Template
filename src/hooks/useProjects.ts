@@ -1,16 +1,33 @@
-import { useCallback } from 'react';
-import { useDataStore } from '../store/dataStore';
+import { useCallback, useMemo } from 'react';
+import { useJson } from 'subzerodev-data-json/react';
 import {
   ProjectCategory,
   ProjectStats
 } from '../../shared/types/project-types';
+import { projectsSchema } from '../config/schemas';
 
 export function useProjects() {
-  const store = useDataStore();
-  const data = store.getData('projects') as ProjectCategory[] | null;
-  const loading = store.isLoading('projects');
-  const error = store.getError('projects');
-  const metadata = store.getMetadata('projects');
+  const jsonResult = useJson<unknown>('projects');
+
+  const data = useMemo(() => {
+    if (jsonResult.loading || !jsonResult.ok) return null;
+
+    const validated = projectsSchema(jsonResult.data);
+
+    return validated.ok ? (validated.value as ProjectCategory[]) : null;
+  }, [jsonResult]);
+
+  const loading = jsonResult.loading;
+  // `'message' in jsonResult` (not `!jsonResult.ok`): this repo's tsconfig
+  // has strictNullChecks off, and TS doesn't reliably narrow a discriminated
+  // union's negated branch without it — an `in` check narrows correctly
+  // either way.
+  const error =
+    !jsonResult.loading && 'message' in jsonResult
+      ? new Error(jsonResult.message)
+      : null;
+
+  const metadata = jsonResult.meta;
 
   // Projects-specific business logic
   const getProjectsByTag = useCallback(
@@ -158,6 +175,7 @@ export function useProjects() {
     loading,
     error,
     metadata,
+    refetch: jsonResult.refetch,
     // Business logic methods
     getProjectsByTag,
     getProjectsByCategory,
