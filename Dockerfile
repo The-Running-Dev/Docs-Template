@@ -1,8 +1,17 @@
 # Use the official lightweight Node.js image.
 FROM node:alpine
 
-# Install pnpm tsx globally
-RUN npm install -g pnpm tsx
+# Install pnpm tsx globally.
+#
+# pnpm is pinned to the same version as `packageManager` in package.json, and
+# the two must be bumped together. Unpinned, this installs whatever pnpm is
+# latest at build time; pnpm >= 11 then reads `packageManager: pnpm@10.0.0`,
+# tries to switch itself to that version via `@pnpm/exe`, and fails the build
+# with "Cannot verify the identity of the @pnpm/exe.<platform> native binary:
+# it is missing from pnpm-lock.yaml". Nothing in the repository changed when
+# that started happening -- a new pnpm release was published, which is exactly
+# why the version belongs here rather than floating.
+RUN npm install -g pnpm@10.0.0 tsx
 
 # Install PowerShell (Alpine/musl build) so the in-image docs-build script and
 # CI container jobs can run .ps1 scripts. Microsoft ships a musl tarball plus a
