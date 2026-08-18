@@ -5,6 +5,7 @@ import {
   FlattenedTechnologyItem
 } from '../components/Portfolio/models';
 import { portfolioSchema } from '../config/schemas';
+import { getJsonLoader } from '../data/jsonLoader';
 
 export function usePortfolio() {
   const jsonResult = useJson<unknown>('portfolio');
@@ -34,6 +35,16 @@ export function usePortfolio() {
         : null;
 
   const metadata = jsonResult.meta;
+
+  // `portfolio` declares `cache: manual` (config/sources.public.yml), so a
+  // plain `jsonResult.refetch()` would replay the cached entry rather than
+  // re-reading the source (see useProjects.ts's identical `cache: manual`
+  // situation). Drop the cache entry first so refetch always does a fresh
+  // read.
+  const refetch = useCallback(async () => {
+    getJsonLoader().invalidate('portfolio');
+    await jsonResult.refetch();
+  }, [jsonResult.refetch]);
 
   // Portfolio-specific business logic
   const getProjectsByCategory = useCallback(
@@ -104,7 +115,7 @@ export function usePortfolio() {
     loading,
     error,
     metadata,
-    refetch: jsonResult.refetch,
+    refetch,
     // Business logic methods
     getProjectsByCategory,
     getTechnologiesByCategory,

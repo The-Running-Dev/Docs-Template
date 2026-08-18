@@ -56,12 +56,6 @@ const technologyItemSchema: z.ZodType<TechnologyItemInput> = z.lazy(() =>
   })
 );
 
-const technologySchema = z.object({
-  name: z.string(),
-  link: z.string().optional(),
-  subCategories: z.array(z.union([z.string(), technologyItemSchema])).optional()
-});
-
 const statItemSchema = z.object({
   // Real data has occasional numeric `number` values (e.g. a raw count)
   // alongside the usual "20+"-style strings.
@@ -79,7 +73,7 @@ const portfolioProjectCategorySchema = z
 
 const portfolioDataSchema = z.object({
   header: z.object({ title: z.string(), subtitle: z.string() }),
-  technologies: z.array(technologySchema),
+  technologies: z.array(technologyItemSchema),
   projects: z.array(portfolioProjectCategorySchema),
   stats: z.array(statItemSchema),
   seo: z.object({ title: z.string(), description: z.string() })
