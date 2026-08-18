@@ -5,17 +5,23 @@ import {
   ProjectStats
 } from '../../shared/types/project-types';
 import { projectsSchema } from '../config/schemas';
+import { getJsonLoader } from '../data/jsonLoader';
 
 export function useProjects() {
   const jsonResult = useJson<unknown>('projects');
 
-  const data = useMemo(() => {
+  // Deps are the individual primitives/reference (not `jsonResult` itself):
+  // useJson returns a new object literal every render, so depending on the
+  // whole result would defeat this memo and re-run zod validation on every
+  // render (e.g. every keystroke in a filter that re-renders this hook's
+  // consumer).
+  const validated = useMemo(() => {
     if (jsonResult.loading || !jsonResult.ok) return null;
 
-    const validated = projectsSchema(jsonResult.data);
+    return projectsSchema(jsonResult.data);
+  }, [jsonResult.loading, jsonResult.ok, jsonResult.data]);
 
-    return validated.ok ? (validated.value as ProjectCategory[]) : null;
-  }, [jsonResult]);
+  const data = validated?.ok ? (validated.value as ProjectCategory[]) : null;
 
   const loading = jsonResult.loading;
   // `'message' in jsonResult` (not `!jsonResult.ok`): this repo's tsconfig
@@ -25,7 +31,9 @@ export function useProjects() {
   const error =
     !jsonResult.loading && 'message' in jsonResult
       ? new Error(jsonResult.message)
-      : null;
+      : validated && 'message' in validated
+        ? new Error(`Schema Validation Failed for "projects": ${validated.message}`)
+        : null;
 
   const metadata = jsonResult.meta;
 
@@ -170,12 +178,23 @@ export function useProjects() {
     return data.map((cat) => cat.category);
   }, [data]);
 
+  // `projects` declares `cache: manual` (config/sources.public.yml), so a
+  // plain `jsonResult.refetch()` would replay the cached entry rather than
+  // re-reading the source (verified against the package: a `manual` policy
+  // reuses its cache entry across repeated `loadById` calls until
+  // `invalidate()` is called). Drop the cache entry first so refetch always
+  // does a fresh read — this is what admin's "refresh after save" relies on.
+  const refetch = useCallback(async () => {
+    getJsonLoader().invalidate('projects');
+    await jsonResult.refetch();
+  }, [jsonResult.refetch]);
+
   return {
     data,
     loading,
     error,
     metadata,
-    refetch: jsonResult.refetch,
+    refetch,
     // Business logic methods
     getProjectsByTag,
     getProjectsByCategory,

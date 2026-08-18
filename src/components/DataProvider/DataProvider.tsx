@@ -52,8 +52,11 @@ function DataProvider<TData = any, TProcessedData = TData>({
   // Called unconditionally so hook order stays stable across every
   // DataProvider usage, whether or not `feature` maps to a source: an empty
   // id is a cheap, side-effect-free json.unresolved (no network call) that
-  // is simply ignored below when sourceId is undefined.
-  const jsonResult = useJson<unknown>((sourceId ?? '') as SourceId);
+  // is simply ignored below when sourceId is undefined. Also empty when the
+  // feature is disabled, so a disabled feature never issues its HTTP fetch.
+  const jsonResult = useJson<unknown>(
+    (isEnabled && sourceId ? sourceId : '') as SourceId
+  );
 
   if (!isEnabled) {
     return fallback as React.ReactElement | null;

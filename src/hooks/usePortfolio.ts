@@ -9,13 +9,17 @@ import { portfolioSchema } from '../config/schemas';
 export function usePortfolio() {
   const jsonResult = useJson<unknown>('portfolio');
 
-  const data = useMemo(() => {
+  // Deps are the individual primitives/reference (not `jsonResult` itself):
+  // useJson returns a new object literal every render, so depending on the
+  // whole result would defeat this memo and re-run zod validation on every
+  // render.
+  const validated = useMemo(() => {
     if (jsonResult.loading || !jsonResult.ok) return null;
 
-    const validated = portfolioSchema(jsonResult.data);
+    return portfolioSchema(jsonResult.data);
+  }, [jsonResult.loading, jsonResult.ok, jsonResult.data]);
 
-    return validated.ok ? (validated.value as PortfolioData) : null;
-  }, [jsonResult]);
+  const data = validated?.ok ? (validated.value as PortfolioData) : null;
 
   const loading = jsonResult.loading;
   // `'message' in jsonResult` (not `!jsonResult.ok`): this repo's tsconfig
@@ -25,7 +29,9 @@ export function usePortfolio() {
   const error =
     !jsonResult.loading && 'message' in jsonResult
       ? new Error(jsonResult.message)
-      : null;
+      : validated && 'message' in validated
+        ? new Error(`Schema Validation Failed for "portfolio": ${validated.message}`)
+        : null;
 
   const metadata = jsonResult.meta;
 
