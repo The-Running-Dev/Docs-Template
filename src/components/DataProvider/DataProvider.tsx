@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useJson } from 'subzerodev-data-json/react';
 import type { SourceId } from 'subzerodev-data-json';
 import {
@@ -6,14 +6,17 @@ import {
   FeatureToConfigMap,
   Features
 } from '../../config/FeaturesConfig';
-import { schemaRegistry, SchemaId } from '../../config/schemas';
+import { schemaRegistry } from '../../config/schemas';
 import { DataProviderComponentProps } from './models';
 
 /**
  * The only features with a declared HTTP source (config/sources.public.yml).
- * Every other feature/DataProvider usage renders defaultData directly.
+ * Every other feature/DataProvider usage renders defaultData directly. Value
+ * type is tied to `schemaRegistry`'s own keys (rather than a separately
+ * hand-maintained union) so this map can't silently drift from the set of
+ * schemas that actually exist.
  */
-const FeatureToSourceId: Partial<Record<Features, SchemaId>> = {
+const FeatureToSourceId: Partial<Record<Features, keyof typeof schemaRegistry>> = {
   [Features.CVPage]: 'cv',
   [Features.PortfolioPage]: 'portfolio',
   [Features.ProjectsPage]: 'projects'
@@ -42,9 +45,10 @@ function DataProvider<TData = any, TProcessedData = TData>({
   TProcessedData
 >): React.ReactElement | null {
   const featuresConfig = useFeaturesConfig();
-  const isEnabled = feature
-    ? featuresConfig[FeatureToConfigMap[feature as Features]]
-    : true;
+  const isEnabled =
+    feature !== undefined
+      ? featuresConfig[FeatureToConfigMap[feature as Features]]
+      : true;
 
   const sourceId =
     feature !== undefined ? FeatureToSourceId[feature as Features] : undefined;
@@ -58,18 +62,29 @@ function DataProvider<TData = any, TProcessedData = TData>({
     (isEnabled && sourceId ? sourceId : '') as SourceId
   );
 
+  // Memoized like usePortfolio/useProjects: useJson returns a new object
+  // literal every render, so validating without a memo would re-run zod
+  // validation on every DataProvider render for no reason.
+  const validated = useMemo(() => {
+    if (!sourceId || jsonResult.loading || !jsonResult.ok) return null;
+
+    return schemaRegistry[sourceId](jsonResult.data);
+  }, [sourceId, jsonResult.loading, jsonResult.ok, jsonResult.data]);
+
   if (!isEnabled) {
     return fallback as React.ReactElement | null;
   }
 
   const hasDefaultData = !(defaultData === undefined || defaultData === null);
 
-  if (!sourceId) {
-    // Simple feature-gating mode - when no defaultData provided, act like FeatureGuard
-    if (!hasDefaultData) {
-      return <>{children(null as TProcessedData, false, null, null)}</>;
-    }
+  // Checked before `sourceId`: a feature with no defaultData always acts as
+  // a plain FeatureGuard, even if it has a mapped source — mirrors this
+  // component's pre-migration precedence.
+  if (!hasDefaultData) {
+    return <>{children(null as TProcessedData, false, null, null)}</>;
+  }
 
+  if (!sourceId) {
     const processedData =
       processor && defaultData ? processor(defaultData) : defaultData;
 
@@ -96,9 +111,7 @@ function DataProvider<TData = any, TProcessedData = TData>({
   if (!jsonResult.loading) {
     if ('message' in jsonResult) {
       error = new Error(jsonResult.message);
-    } else {
-      const validated = schemaRegistry[sourceId](jsonResult.data);
-
+    } else if (validated) {
       if ('value' in validated) {
         data = validated.value as TData;
       } else {
