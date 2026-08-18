@@ -606,7 +606,11 @@ export class PreBuild {
 
     const yamlFiles = fs
       .readdirSync(CONFIG_DIR)
-      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+      // sources.public.yml is converted separately (processSourceMap) so its
+      // output can be named sourcesPublic.json — `sources.public` is not a
+      // valid identifier for createDataIndex() to re-export.
+      .filter((f) => f !== 'sources.public.yml');
 
     let processedCount = 0;
 
@@ -637,6 +641,61 @@ export class PreBuild {
     console.log(
       `[INFO] YAML to JSON Conversion Completed: ${processedCount} File(s) Processed`
     );
+  }
+
+  /**
+   * Converts config/sources.public.yml into data/sourcesPublic.json for the
+   * browser bundle to import (J6.9).
+   *
+   * Uses the same js-yaml pass every other config file goes through, rather
+   * than subzerodev-data-json's own `readSourceMap`. That reader is the
+   * intended tool here, but it is not in the published `0.1.0` — it lands in
+   * that package's J13 slice. Switch this back to
+   * `readSourceMap(configPath)` once a release carrying it is on npm; the
+   * output shape is identical, so nothing else has to change.
+   *
+   * Note this is not a second parser: it is the repository's existing YAML
+   * conversion, and no `SourceMap` rules are reimplemented here. What is
+   * deferred is only *when* the map is checked — `createJsonLoader` still
+   * validates every entry at construction (`normalizeSourceMap` and
+   * `checkRequiredPorts`), so a malformed entry fails loudly at startup
+   * instead of at build time.
+   *
+   * @private
+   */
+  private processSourceMap(): void {
+    const configPath = path.join(CONFIG_DIR, 'sources.public.yml');
+
+    if (!fs.existsSync(configPath)) {
+      console.warn(
+        `[WARN] sources.public.yml Not Found, Skipping Source Map Conversion`
+      );
+
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+
+      const sourceMap = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+
+      // Not `sources.public.json`: createDataIndex() re-exports each data/*.json
+      // file under its basename as a TS identifier, and `sources.public` isn't
+      // one (the dot breaks `export { default as sources.public } from ...`).
+      const outputPath = path.join(DATA_DIR, 'sourcesPublic.json');
+
+      fs.writeFileSync(outputPath, JSON.stringify(sourceMap, null, 2), 'utf-8');
+
+      console.log(
+        `[INFO] Converted sources.public.yml --> data/sourcesPublic.json`
+      );
+    } catch (error) {
+      console.error(
+        `[ERROR] Failed to Process sources.public.yml: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   /**
@@ -756,6 +815,7 @@ export class PreBuild {
       console.log('[INFO] Starting Pre Build Process...');
 
       this.processYamlToJson();
+      this.processSourceMap();
       this.copyMarkdown();
       this.generateNavbar();
       this.generateThemeConfig();
