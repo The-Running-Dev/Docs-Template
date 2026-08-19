@@ -1,0 +1,77 @@
+.config-panel__toggle {
+  background: var(--ifm-color-emphasis-100);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  color: var(--ifm-navbar-link-color);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.config-panel {
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  box-shadow: var(--ifm-global-shadow-md);
+  font-size: 0.85rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 0.75rem;
+  width: 320px;
+}
+
+.config-panel__header {
+  align-items: center;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  display: flex;
+  font-weight: 600;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.config-panel__header button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.config-panel__section {
+  margin-bottom: 0.75rem;
+}
+
+.config-panel__section h3 {
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+}
+
+.config-panel__empty {
+  color: var(--ifm-color-emphasis-600);
+  font-style: italic;
+}
+
+.config-panel__row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+}
+
+.config-panel__row label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-panel__row input[type='text'],
+.config-panel__row input[type='number'] {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 4px;
+  max-width: 140px;
+  padding: 0.15rem 0.35rem;
+}

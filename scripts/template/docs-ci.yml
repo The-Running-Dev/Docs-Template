@@ -51,6 +51,12 @@ jobs:
         runs-on: ubuntu-latest
         # Run inside the published base image, which already carries the
         # template under /template with node_modules and PowerShell installed.
+        # :latest is a moving tag, installed here only so a first setup works
+        # with no extra step. To pin an immutable build instead, pass the
+        # GitVersion tag or digest docs-build-image.ps1 -Push prints as
+        # -BaseImage to setup-docs.ps1 or setup-docs-workflow.ps1 -- the
+        # latter replaces only this file and docs-deploy.yml, leaving every
+        # other installed file untouched.
         container:
             image: ghcr.io/the-running-dev/docs-template:latest
             credentials:
