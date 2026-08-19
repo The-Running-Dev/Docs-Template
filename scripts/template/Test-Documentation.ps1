@@ -153,6 +153,35 @@ function Test-ExcludedDocumentationPath {
     return $false
 }
 
+function Get-MarkdownFileWithoutExcludedSegment {
+    <#
+    .SYNOPSIS
+    Recurses a directory for *.md files, pruning excluded segments as it goes.
+
+    .DESCRIPTION
+    Walks one directory level at a time instead of Get-ChildItem -Recurse, so a
+    directory whose name matches ExcludedSegments is never descended into. On a
+    tree with a populated node_modules/, that is the difference between reading
+    every file it contains and reading none of them.
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string] $Directory,
+
+        [Parameter(Mandatory)]
+        [string[]] $ExcludedSegment
+    )
+
+    Get-ChildItem -LiteralPath $Directory -File -Filter '*.md'
+
+    foreach ($child in Get-ChildItem -LiteralPath $Directory -Directory) {
+        if ($ExcludedSegment -contains $child.Name) {
+            continue
+        }
+        Get-MarkdownFileWithoutExcludedSegment -Directory $child.FullName -ExcludedSegment $ExcludedSegment
+    }
+}
+
 function Get-DocumentationFile {
     param (
         [Parameter(Mandatory)]
@@ -174,7 +203,7 @@ function Get-DocumentationFile {
             Get-Item -LiteralPath $resolved
         }
         elseif (Test-Path -LiteralPath $resolved -PathType Container) {
-            Get-ChildItem -LiteralPath $resolved -Filter '*.md' -Recurse -File
+            Get-MarkdownFileWithoutExcludedSegment -Directory $resolved -ExcludedSegment $Settings.ExcludedSegments
         }
         else {
             throw [System.IO.FileNotFoundException]::new(

@@ -124,8 +124,19 @@
     places an install references it -- docs/Dockerfile's BASE_IMAGE argument,
     docs.ps1's default, and the container image in both workflows -- so a
     project using a fork, a private mirror, or a pinned digest does not have to
-    hand-edit each one. Defaults to the published image at :latest, which is
-    the only tag the release workflow publishes.
+    hand-edit each one. Defaults to the published image at :latest, a moving
+    tag chosen so a first install works with no extra step.
+
+    :latest can change with no change in this project's own history, which
+    matters most for docs-deploy.yml's production deploy path. The release
+    workflow also publishes an immutable GitVersion tag (for example
+    :1.4.2) alongside :latest, and docs-build-image.ps1 -Push prints each
+    tag's resolved `repo@sha256:...` digest. Either the GitVersion tag or the
+    digest can be passed here to pin a build. To refresh that pin later
+    without touching the Docusaurus overlay, preview script, or gate files,
+    re-run with -WorkflowsOnly -Overwrite (or use
+    setup-docs-workflow.ps1 -BaseImage <ref> -Overwrite), which replaces only
+    the two installed workflow files.
 
 .PARAMETER NoHomepage
     Do not generate the homepage from the README, and do not register it for

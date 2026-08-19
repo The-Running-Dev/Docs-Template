@@ -30,6 +30,12 @@
 
 .PARAMETER Push
     Push every tag after a successful build. Without it, the script only builds.
+    After a push, the script resolves and prints each tag's immutable digest
+    reference (`repo@sha256:...`) -- the form a consumer should pass to
+    -BaseImage (setup-docs.ps1, setup-docs-workflow.ps1) to pin a workflow
+    against a specific build rather than a moving tag such as :latest. When
+    $env:GITHUB_OUTPUT is set, the primary -Tag's digest is also written there
+    as `digest=...` for a calling workflow to consume.
 
 .PARAMETER Registry
     Registry host used for login. Default ghcr.io.
@@ -121,12 +127,34 @@ if ($Token) {
     }
 }
 
+$digestByTag = @{}
 foreach ($t in $allTags) {
     Write-Host "[IMAGE-BUILD] Pushing $t ..." -ForegroundColor Cyan
     & docker push $t
     if ($LASTEXITCODE -ne 0) {
         throw "docker push '$t' failed with exit code $LASTEXITCODE."
     }
+
+    # RepoDigests is populated by the push above, not the earlier build, so
+    # this can only run after a successful push.
+    $repository = $t -replace ':[^:/]+$', ''
+    $repoDigests = & docker inspect --format '{{range .RepoDigests}}{{.}}|{{end}}' $t
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker inspect '$t' failed with exit code $LASTEXITCODE."
+    }
+    $digest = @($repoDigests -split '\|' | Where-Object { $_.StartsWith("$repository@") }) | Select-Object -First 1
+    if ($digest) {
+        $digestByTag[$t] = $digest
+    }
 }
 
 Write-Host "[IMAGE-BUILD] Published: $($allTags -join ', ')." -ForegroundColor Green
+foreach ($t in $allTags) {
+    if ($digestByTag.ContainsKey($t)) {
+        Write-Host "[IMAGE-BUILD] Immutable reference for $t : $($digestByTag[$t])" -ForegroundColor Green
+    }
+}
+
+if ($env:GITHUB_OUTPUT -and $digestByTag.ContainsKey($Tag)) {
+    "digest=$($digestByTag[$Tag])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+}
