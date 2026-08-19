@@ -647,23 +647,14 @@ export class PreBuild {
    * Converts config/sources.public.yml into data/sourcesPublic.json for the
    * browser bundle to import (J6.9).
    *
-   * Uses the same js-yaml pass every other config file goes through, rather
-   * than subzerodev-data-json's own `readSourceMap`. That reader is the
-   * intended tool here, but it is not in the published `0.1.0` — it lands in
-   * that package's J13 slice. Switch this back to
-   * `readSourceMap(configPath)` once a release carrying it is on npm; the
-   * output shape is identical, so nothing else has to change.
-   *
-   * Note this is not a second parser: it is the repository's existing YAML
-   * conversion, and no `SourceMap` rules are reimplemented here. What is
-   * deferred is only *when* the map is checked — `createJsonLoader` still
-   * validates every entry at construction (`normalizeSourceMap` and
-   * `checkRequiredPorts`), so a malformed entry fails loudly at startup
-   * instead of at build time.
+   * Uses subzerodev-data-json's own `readSourceMap`, so a malformed entry is
+   * rejected here with the same `JsonError` (`config.invalidEntry` /
+   * `config.unreadable`) that `createJsonLoader` would raise for it, named at
+   * build time instead of only at Root render.
    *
    * @private
    */
-  private processSourceMap(): void {
+  private async processSourceMap(): Promise<void> {
     const configPath = path.join(CONFIG_DIR, 'sources.public.yml');
 
     if (!fs.existsSync(configPath)) {
@@ -679,7 +670,14 @@ export class PreBuild {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
 
-      const sourceMap = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+      // Dynamic import: this file runs as CommonJS under tsx (no `"type":
+      // "module"` in package.json), and subzerodev-data-json/node is an
+      // ESM-only subpath export (no `require` condition) — a static import
+      // resolves via Node's CJS algorithm and fails with
+      // ERR_PACKAGE_PATH_NOT_EXPORTED, while `import()` always resolves via
+      // the ESM algorithm regardless of the caller's module system.
+      const { readSourceMap } = await import('subzerodev-data-json/node');
+      const sourceMap = await readSourceMap(configPath);
 
       // Not `sources.public.json`: createDataIndex() re-exports each data/*.json
       // file under its basename as a TS identifier, and `sources.public` isn't
@@ -810,12 +808,12 @@ export class PreBuild {
    *
    * @public
    */
-  public process(): void {
+  public async process(): Promise<void> {
     try {
       console.log('[INFO] Starting Pre Build Process...');
 
       this.processYamlToJson();
-      this.processSourceMap();
+      await this.processSourceMap();
       this.copyMarkdown();
       this.generateNavbar();
       this.generateThemeConfig();
@@ -835,7 +833,7 @@ export class PreBuild {
 
 // Only run if invoked directly, not imported
 if (process.argv[1] && process.argv[1].endsWith('pre-build.ts')) {
-  new PreBuild().process();
+  void new PreBuild().process();
 }
 
 /**
