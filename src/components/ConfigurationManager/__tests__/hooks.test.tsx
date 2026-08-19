@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ConfigurationManager } from '../ConfigurationManager';
 import { FeatureFlagManager } from '../FeatureFlagManager';
-import { useConfiguration, useFeatureFlag } from '../hooks';
+import { useConfiguration, useRuntimeFeatureFlag } from '../hooks';
 
 function ConfigurationProbe({ manager }: { manager: ConfigurationManager }) {
   const [maxItems, setMaxItems] = useConfiguration<number>(manager, 'ui.maxItems', 10);
@@ -20,7 +20,7 @@ function ConfigurationProbe({ manager }: { manager: ConfigurationManager }) {
 }
 
 function FeatureFlagProbe({ manager }: { manager: FeatureFlagManager }) {
-  const [enabled, loading] = useFeatureFlag(manager, 'beta-feature');
+  const [enabled, loading] = useRuntimeFeatureFlag(manager, 'beta-feature');
   return <span data-testid="state">{loading ? 'loading' : enabled ? 'enabled' : 'disabled'}</span>;
 }
 
@@ -51,7 +51,7 @@ describe('useConfiguration', () => {
   });
 });
 
-describe('useFeatureFlag', () => {
+describe('useRuntimeFeatureFlag', () => {
   it('resolves from loading to the evaluated flag state', async () => {
     const manager = new FeatureFlagManager({ enablePersistence: false });
     await manager.defineFlag('beta-feature', true);

@@ -44,10 +44,10 @@ export function useConfiguration<T extends ConfigValue = ConfigValue>(
  *
  * @returns `[enabled, loading]`. `loading` is true only until the flag's
  * first evaluation resolves (`isFeatureEnabled` is async), so a caller that
- * only needs the boolean -- as in `const [isEnabled] = useFeatureFlag(...)`
+ * only needs the boolean -- as in `const [isEnabled] = useRuntimeFeatureFlag(...)`
  * -- can safely ignore it and treat the initial `false` as "not enabled yet".
  */
-export function useFeatureFlag(
+export function useRuntimeFeatureFlag(
   featureFlagManager: FeatureFlagManager,
   key: string
 ): [boolean, boolean] {

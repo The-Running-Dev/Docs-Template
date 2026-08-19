@@ -54,6 +54,13 @@
   font-style: italic;
 }
 
+.config-panel__error {
+  color: var(--ifm-color-danger);
+  font-size: 0.75rem;
+  margin: 0.15rem 0 0;
+  width: 100%;
+}
+
 .config-panel__row {
   align-items: center;
   display: flex;

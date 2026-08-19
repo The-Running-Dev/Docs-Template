@@ -13,7 +13,7 @@ export type {
   GlobalConfigurationContextValue
 } from './ConfigurationContext';
 
-export { useConfiguration, useFeatureFlag } from './hooks';
+export { useConfiguration, useRuntimeFeatureFlag } from './hooks';
 
 export { ConfigurationPanel, default as ConfigurationPanelDefault } from './ConfigurationPanel';
 export type { ConfigurationPanelProps } from './ConfigurationPanel';

@@ -96,6 +96,7 @@ export class FeatureFlagManager {
 
   setEvaluationContext(key: string, value: ConfigValue): void {
     this.evaluationContext = { ...this.evaluationContext, [key]: value };
+    this.flags.forEach((flag) => this.notify(flag.key, flag));
   }
 
   getEvaluationContext(): Record<string, ConfigValue> {
@@ -134,12 +135,12 @@ export class FeatureFlagManager {
     return this.mutex.runExclusive(async () => {
       const existing = this.flags.get(key);
       const flag: FeatureFlag = existing ? { ...existing, enabled } : { key, enabled };
-      this.flags.set(key, flag);
 
       if (this.enablePersistence) {
         await this.storage.setItem(this.storageKey(key), JSON.stringify(enabled));
       }
 
+      this.flags.set(key, flag);
       this.notify(key, flag);
     });
   }
@@ -159,7 +160,11 @@ export class FeatureFlagManager {
     this.subscriptions.get(key)!.add(callback);
 
     return () => {
-      this.subscriptions.get(key)?.delete(callback);
+      const subscribers = this.subscriptions.get(key);
+      subscribers?.delete(callback);
+      if (subscribers && subscribers.size === 0) {
+        this.subscriptions.delete(key);
+      }
     };
   }
 

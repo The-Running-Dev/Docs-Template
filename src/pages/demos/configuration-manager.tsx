@@ -5,7 +5,7 @@ import {
   ConfigurationPanel,
   ConfigurationProvider,
   useConfiguration,
-  useFeatureFlag,
+  useRuntimeFeatureFlag,
   useGlobalConfiguration
 } from '../../components/ConfigurationManager';
 
@@ -61,7 +61,7 @@ function ConfigurationManagerDemo(): React.JSX.Element {
   const { configManager, featureFlagManager } = useGlobalConfiguration();
   const [maxItems, setMaxItems] = useConfiguration<number>(configManager, 'ui.max-items', 10);
   const [theme, setTheme] = useConfiguration<string>(configManager, 'ui.theme', 'blue');
-  const [isBetaEnabled] = useFeatureFlag(featureFlagManager, 'beta-feature');
+  const [isBetaEnabled] = useRuntimeFeatureFlag(featureFlagManager, 'beta-feature');
 
   return (
     <div className="card shadow--md">

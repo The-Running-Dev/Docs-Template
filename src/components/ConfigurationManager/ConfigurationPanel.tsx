@@ -27,11 +27,15 @@ export function ConfigurationPanel({
   const [schemas, setSchemas] = useState<ConfigurationSchema<any>[]>(() => configManager.getSchemas());
   const [flags, setFlags] = useState<FeatureFlag[]>(() => featureFlagManager.getFlags());
   const [isOpen, setIsOpen] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
+
+    setSchemas(configManager.getSchemas());
+    setFlags(featureFlagManager.getFlags());
 
     const interval = setInterval(() => {
       setSchemas(configManager.getSchemas());
@@ -72,8 +76,14 @@ export function ConfigurationPanel({
             key={schema.key}
             schema={schema}
             value={configManager.get(schema.key, schema.defaultValue)}
+            error={errors[schema.key]}
             onChange={(value) => {
-              void configManager.set(schema.key, value);
+              void configManager.set(schema.key, value).then((result) => {
+                setErrors((prev) => ({
+                  ...prev,
+                  [schema.key]: result.isValid ? '' : result.errors.join(' ')
+                }));
+              });
             }}
           />
         ))}
@@ -105,12 +115,14 @@ export function ConfigurationPanel({
 interface ConfigurationValueRowProps {
   schema: ConfigurationSchema<any>;
   value: ConfigValue;
+  error?: string;
   onChange: (value: ConfigValue) => void;
 }
 
 function ConfigurationValueRow({
   schema,
   value,
+  error,
   onChange
 }: ConfigurationValueRowProps): React.ReactElement {
   return (
@@ -135,6 +147,7 @@ function ConfigurationValueRow({
           }
         />
       )}
+      {error && <p className="config-panel__error">{error}</p>}
     </div>
   );
 }

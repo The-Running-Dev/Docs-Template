@@ -64,6 +64,10 @@ export class ConfigurationManager {
       this.schemas.set(schema.key, schema);
 
       if (this.values.has(schema.key)) {
+        const existing = this.values.get(schema.key) as ConfigValue;
+        if (!this.validate(schema, existing).isValid) {
+          this.values.set(schema.key, schema.defaultValue);
+        }
         return;
       }
 
@@ -100,7 +104,7 @@ export class ConfigurationManager {
       value !== null &&
       value !== undefined &&
       schema.type !== 'object' &&
-      typeof value !== schema.type
+      (typeof value !== schema.type || (schema.type === 'number' && Number.isNaN(value)))
     ) {
       return {
         isValid: false,
@@ -151,11 +155,11 @@ export class ConfigurationManager {
         ? (this.values.get(key) as ConfigValue)
         : (schema?.defaultValue ?? null);
 
-      this.values.set(key, value);
-
       if (this.enablePersistence) {
         await this.storage.setItem(this.storageKey(key), JSON.stringify(value));
       }
+
+      this.values.set(key, value);
 
       this.notify(key, {
         key,
@@ -176,11 +180,11 @@ export class ConfigurationManager {
       const oldValue = this.values.has(key) ? (this.values.get(key) as ConfigValue) : null;
       const value = schema ? schema.defaultValue : null;
 
-      this.values.set(key, value);
-
       if (this.enablePersistence) {
         await this.storage.removeItem(this.storageKey(key));
       }
+
+      this.values.set(key, value);
 
       this.notify(key, {
         key,
@@ -202,7 +206,11 @@ export class ConfigurationManager {
     this.subscriptions.get(key)!.add(callback as ConfigurationSubscription<any>);
 
     return () => {
-      this.subscriptions.get(key)?.delete(callback as ConfigurationSubscription<any>);
+      const subscribers = this.subscriptions.get(key);
+      subscribers?.delete(callback as ConfigurationSubscription<any>);
+      if (subscribers && subscribers.size === 0) {
+        this.subscriptions.delete(key);
+      }
     };
   }
 
