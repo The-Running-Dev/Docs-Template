@@ -3,41 +3,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { Features } from '../../../config/FeaturesConfig';
 
-// Mock dependencies
 vi.mock('../../../config/FeaturesConfig', () => ({
   Features: {
-    VersionDisplay: 'versionDisplay'
+    VersionDisplay: 'versionDisplay',
+    CVPage: 'cvPage'
   },
   FeatureToConfigMap: {
-    versionDisplay: 'versionDisplay'
+    versionDisplay: 'versionDisplay',
+    cvPage: 'cvPage'
   },
   useFeaturesConfig: vi.fn()
 }));
 
-vi.mock('../../../context/JsonDataProvider', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div data-testid="json-provider">{children}</div>
+const mockUseJson = vi.fn();
+
+vi.mock('subzerodev-data-json/react', () => ({
+  useJson: (...args: unknown[]) => mockUseJson(...args)
 }));
 
-vi.mock('../../../context/HttpDataProvider', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div data-testid="http-provider">{children}</div>
-}));
-
-vi.mock('../../../data', () => ({
-  getData: vi.fn().mockReturnValue({})
-}));
-
-vi.mock('../../../context/DataProvider', () => ({
-  useDataContext: vi.fn().mockReturnValue({
-    data: { version: '1.0.0' },
-    loadingState: { loading: false, error: null },
-    meta: {}
-  })
-}));
-
-vi.mock('../../../../data', () => ({
-  globalConfig: {}
+vi.mock('../../../config/schemas', () => ({
+  schemaRegistry: {
+    cv: (raw: unknown) => ({ ok: true, value: raw })
+  }
 }));
 
 import DataProvider from '../DataProvider';
@@ -45,10 +32,33 @@ import { useFeaturesConfig } from '../../../config/FeaturesConfig';
 
 const mockUseFeaturesConfig = useFeaturesConfig as any;
 
+const unresolvedResult = {
+  ok: false as const,
+  reason: 'json.unresolved' as const,
+  message: 'loading',
+  data: null,
+  meta: {
+    id: '',
+    provider: 'none' as const,
+    location: '',
+    bytes: 0,
+    digest: null,
+    cached: false,
+    attempts: 0,
+    validated: false
+  },
+  loading: true,
+  refetch: vi.fn()
+};
+
 describe('DataProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseFeaturesConfig.mockReturnValue({ versionDisplay: true });
+    mockUseFeaturesConfig.mockReturnValue({
+      versionDisplay: true,
+      cvPage: true
+    });
+    mockUseJson.mockReturnValue(unresolvedResult);
   });
 
   it('renders children with static data when feature enabled and no config source', () => {
@@ -78,9 +88,9 @@ describe('DataProvider', () => {
     const mockChildren = vi.fn();
 
     const { getByTestId } = render(
-      <DataProvider 
-        feature={Features.VersionDisplay} 
-        defaultData={{ test: true }} 
+      <DataProvider
+        feature={Features.VersionDisplay}
+        defaultData={{ test: true }}
         fallback={fallback}
       >
         {mockChildren}
@@ -95,9 +105,7 @@ describe('DataProvider', () => {
     const mockChildren = vi.fn().mockReturnValue(<div>Guarded Content</div>);
 
     render(
-      <DataProvider feature={Features.VersionDisplay}>
-        {mockChildren}
-      </DataProvider>
+      <DataProvider feature={Features.VersionDisplay}>{mockChildren}</DataProvider>
     );
 
     expect(mockChildren).toHaveBeenCalledWith(null, false, null, null);
@@ -107,11 +115,7 @@ describe('DataProvider', () => {
     const mockChildren = vi.fn().mockReturnValue(<div>No Feature</div>);
     const defaultData = { test: true };
 
-    render(
-      <DataProvider defaultData={defaultData}>
-        {mockChildren}
-      </DataProvider>
-    );
+    render(<DataProvider defaultData={defaultData}>{mockChildren}</DataProvider>);
 
     expect(mockChildren).toHaveBeenCalledWith(
       defaultData,
@@ -144,5 +148,78 @@ describe('DataProvider', () => {
         source: 'static'
       })
     );
+  });
+
+  it('reads through useJson for a feature mapped to a source (cvPage -> cv)', () => {
+    mockUseJson.mockReturnValue({
+      ok: true,
+      reason: 'json.ok',
+      data: { header: { title: 'Ben' } },
+      meta: {
+        id: 'cv',
+        provider: 'http',
+        location: 'https://example.com/cv.json',
+        bytes: 42,
+        digest: null,
+        cached: false,
+        attempts: 1,
+        validated: false
+      },
+      loading: false,
+      refetch: vi.fn()
+    });
+
+    const mockChildren = vi.fn().mockReturnValue(<div>CV</div>);
+
+    render(
+      <DataProvider feature={Features.CVPage} defaultData={{ header: { title: 'Default' } }}>
+        {mockChildren}
+      </DataProvider>
+    );
+
+    expect(mockUseJson).toHaveBeenCalledWith('cv');
+    expect(mockChildren).toHaveBeenCalledWith(
+      { header: { title: 'Ben' } },
+      false,
+      null,
+      expect.objectContaining({ provider: 'http', source: 'cv' })
+    );
+  });
+
+  it('falls back to defaultData and reports an error when the source load fails', () => {
+    mockUseJson.mockReturnValue({
+      ok: false,
+      reason: 'json.transport',
+      message: 'network error',
+      data: null,
+      meta: {
+        id: 'cv',
+        provider: 'none',
+        location: '',
+        bytes: 0,
+        digest: null,
+        cached: false,
+        attempts: 1,
+        validated: false
+      },
+      loading: false,
+      refetch: vi.fn()
+    });
+
+    const mockChildren = vi.fn().mockReturnValue(<div>CV</div>);
+    const defaultData = { header: { title: 'Default' } };
+
+    render(
+      <DataProvider feature={Features.CVPage} defaultData={defaultData}>
+        {mockChildren}
+      </DataProvider>
+    );
+
+    const call = mockChildren.mock.calls[0];
+
+    expect(call[0]).toEqual(defaultData);
+    expect(call[1]).toBe(false);
+    expect(call[2]).toBeInstanceOf(Error);
+    expect((call[2] as Error).message).toBe('network error');
   });
 });

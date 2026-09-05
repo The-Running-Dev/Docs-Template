@@ -83,6 +83,9 @@ importers:
       react-toastify:
         specifier: ^11.0.5
         version: 11.0.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      subzerodev-data-json:
+        specifier: ^0.2.0
+        version: 0.2.0(react@19.1.1)(zod@4.0.17)
       zod:
         specifier: ^4.0.16
         version: 4.0.17
@@ -7065,6 +7068,19 @@ packages:
 
   stylis@4.3.6:
     resolution: {integrity: sha512-yQ3rwFWRfwNUY7H5vpU0wfdkNSnvnJinhF9830Swlaxl03zsOjCfmX0ugac+3LtK0lYSgwL/KXc8oYL3mG4YFQ==}
+
+  subzerodev-data-json@0.2.0:
+    resolution: {integrity: sha512-JgL7hETgrmvJtpzj3gAwXofy7FK+Pi9uiY801RqAeYMnekbICdTPBJOTH17vjDyeJUEzp6daEDK0g5M5XvzvnA==}
+    engines: {node: '>=20.19.0'}
+    hasBin: true
+    peerDependencies:
+      react: ^18.3.0
+      zod: ^4.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      zod:
+        optional: true
 
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
@@ -16511,6 +16527,13 @@ snapshots:
       postcss-selector-parser: 6.1.2
 
   stylis@4.3.6: {}
+
+  subzerodev-data-json@0.2.0(react@19.1.1)(zod@4.0.17):
+    dependencies:
+      js-yaml: 4.1.0
+    optionalDependencies:
+      react: 19.1.1
+      zod: 4.0.17
 
   supports-color@7.2.0:
     dependencies:

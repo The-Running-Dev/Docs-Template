@@ -606,7 +606,11 @@ export class PreBuild {
 
     const yamlFiles = fs
       .readdirSync(CONFIG_DIR)
-      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+      // sources.public.yml is converted separately (processSourceMap) so its
+      // output can be named sourcesPublic.json — `sources.public` is not a
+      // valid identifier for createDataIndex() to re-export.
+      .filter((f) => f !== 'sources.public.yml');
 
     let processedCount = 0;
 
@@ -637,6 +641,59 @@ export class PreBuild {
     console.log(
       `[INFO] YAML to JSON Conversion Completed: ${processedCount} File(s) Processed`
     );
+  }
+
+  /**
+   * Converts config/sources.public.yml into data/sourcesPublic.json for the
+   * browser bundle to import (J6.9).
+   *
+   * Uses subzerodev-data-json's own `readSourceMap`, so a malformed entry is
+   * rejected here with the same `JsonError` (`config.invalidEntry` /
+   * `config.unreadable`) that `createJsonLoader` would raise for it, named at
+   * build time instead of only at Root render.
+   *
+   * @private
+   */
+  private async processSourceMap(): Promise<void> {
+    const configPath = path.join(CONFIG_DIR, 'sources.public.yml');
+
+    if (!fs.existsSync(configPath)) {
+      console.warn(
+        `[WARN] sources.public.yml Not Found, Skipping Source Map Conversion`
+      );
+
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+
+      // Dynamic import: this file runs as CommonJS under tsx (no `"type":
+      // "module"` in package.json), and subzerodev-data-json/node is an
+      // ESM-only subpath export (no `require` condition) — a static import
+      // resolves via Node's CJS algorithm and fails with
+      // ERR_PACKAGE_PATH_NOT_EXPORTED, while `import()` always resolves via
+      // the ESM algorithm regardless of the caller's module system.
+      const { readSourceMap } = await import('subzerodev-data-json/node');
+      const sourceMap = await readSourceMap(configPath);
+
+      // Not `sources.public.json`: createDataIndex() re-exports each data/*.json
+      // file under its basename as a TS identifier, and `sources.public` isn't
+      // one (the dot breaks `export { default as sources.public } from ...`).
+      const outputPath = path.join(DATA_DIR, 'sourcesPublic.json');
+
+      fs.writeFileSync(outputPath, JSON.stringify(sourceMap, null, 2), 'utf-8');
+
+      console.log(
+        `[INFO] Converted sources.public.yml --> data/sourcesPublic.json`
+      );
+    } catch (error) {
+      console.error(
+        `[ERROR] Failed to Process sources.public.yml: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   /**
@@ -751,11 +808,12 @@ export class PreBuild {
    *
    * @public
    */
-  public process(): void {
+  public async process(): Promise<void> {
     try {
       console.log('[INFO] Starting Pre Build Process...');
 
       this.processYamlToJson();
+      await this.processSourceMap();
       this.copyMarkdown();
       this.generateNavbar();
       this.generateThemeConfig();
@@ -775,7 +833,7 @@ export class PreBuild {
 
 // Only run if invoked directly, not imported
 if (process.argv[1] && process.argv[1].endsWith('pre-build.ts')) {
-  new PreBuild().process();
+  void new PreBuild().process();
 }
 
 /**

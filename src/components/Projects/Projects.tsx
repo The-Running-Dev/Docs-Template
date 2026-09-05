@@ -18,9 +18,6 @@ import { BulkActionsToolbar } from './BulkActionsToolbar';
 import { AdminTabsModal } from './AdminTabsModal';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { showAuthToast } from '../Auth/AuthToast';
-import { DataLoader } from '../../services/dataLoader';
-import { Features } from '../../config/FeaturesConfig/models';
-import { DEFAULT_PROJECTS_DATA } from './constants';
 import { useAdminProjects } from './hooks/useAdminProjects';
 import { useAuth } from '../Auth/AuthProvider';
 import {
@@ -59,7 +56,7 @@ export default function Projects({
   onRefresh?: () => Promise<void>;
 } = {}): ReactNode {
   const features = useFeaturesConfig();
-  const { data, loading, error } = useProjects();
+  const { data, loading, error, refetch } = useProjects();
 
   // Import admin hooks and detect admin mode if not explicitly provided
   const {
@@ -84,12 +81,7 @@ export default function Projects({
     onRefresh ||
     (effectiveIsAdmin
       ? async () => {
-          const loader = new DataLoader();
-          await loader.loadData(
-            'projects',
-            Features.ProjectsPage,
-            DEFAULT_PROJECTS_DATA
-          );
+          await refetch();
           await refresh();
         }
       : undefined);
@@ -97,14 +89,6 @@ export default function Projects({
     adminToken || (effectiveIsAdmin ? token : undefined);
   const effectiveAdminApiBase =
     adminApiBase || (effectiveIsAdmin ? apiBase : undefined);
-
-  // Initialize data if not already loaded
-  useEffect(() => {
-    if (!data && !loading && !error) {
-      const loader = new DataLoader();
-      loader.loadData('projects', Features.ProjectsPage, DEFAULT_PROJECTS_DATA);
-    }
-  }, [data, loading, error]);
 
   if (!features.projectsPage) {
     return null;
@@ -300,14 +284,9 @@ function ProjectsContent({
   );
 
   const onRefreshStore = useCallback(async () => {
-    if (!onRefresh) return;
-    const loader = new DataLoader();
-    await loader.loadData(
-      'projects',
-      Features.ProjectsPage,
-      DEFAULT_PROJECTS_DATA
-    );
-    await onRefresh();
+    // refetch()-then-refresh() already happens inside the effectiveOnRefresh
+    // this is threaded through from Projects (see useProjects().refetch()).
+    await onRefresh?.();
   }, [onRefresh]);
 
   const loadIntoForm = useCallback(

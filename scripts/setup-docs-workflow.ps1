@@ -31,7 +31,13 @@
 
 .PARAMETER BaseImage
     Documentation image the installed workflows run their container jobs in.
-    Defaults to the published image at :latest.
+    Defaults to the published image at :latest, a moving tag. Pass the
+    immutable GitVersion tag (for example :1.4.2) or a digest
+    (repo@sha256:...) -- printed by docs-build-image.ps1 -Push -- to pin a
+    build, together with -Overwrite to refresh an already-installed pin. This
+    script only ever touches the two workflow files, so pinning or refreshing
+    a digest this way never disturbs the Docusaurus overlay, preview script,
+    or gate files a project owns.
 
 .PARAMETER SkipGate
     Install the workflows without the documentation gate job.
