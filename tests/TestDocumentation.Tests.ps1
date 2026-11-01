@@ -154,3 +154,32 @@ See [the target](./broken(unclosed.md).
         Invoke-Gate -FixtureDir $dir | Should -Not -Match 'does not exist'
     }
 }
+
+Describe 'Test-Documentation.ps1 heading anchors' {
+    It 'keeps inline code in a heading slug' {
+        # Headings were read from the masked lines, so the code span was blanked
+        # and '#target-vm-windows11-test-runtime' was reported missing even though
+        # Docusaurus generates exactly that anchor.
+        $dir = New-GateFixture -Name 'inline-code-heading' -Markdown @'
+# Doc
+
+See [the VM](#target-vm-windows11-test-runtime).
+
+## Target VM: `Windows11-Test` [runtime]
+'@
+        Invoke-Gate -FixtureDir $dir | Should -Not -Match 'target-vm-windows11-test-runtime'
+    }
+
+    It 'still ignores a heading inside a fenced code block' {
+        $dir = New-GateFixture -Name 'fenced-heading' -Markdown @'
+# Doc
+
+See [the section](#not-a-heading).
+
+```md
+## Not a heading
+```
+'@
+        Invoke-Gate -FixtureDir $dir | Should -Match 'not-a-heading'
+    }
+}
