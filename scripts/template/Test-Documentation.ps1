@@ -316,13 +316,16 @@ function Get-DocumentationAnchor {
     )
     $counts = @{}
 
-    foreach ($line in $masked) {
-        $match = [regex]::Match($line, '^\s{0,3}#{1,6}\s+(.+?)\s*$')
-        if (-not $match.Success) {
+    $headingPattern = '^\s{0,3}#{1,6}\s+(.+?)\s*$'
+
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        # The masked line only decides whether this is a heading outside a fence;
+        # the text comes from the original, since inline code is part of the slug.
+        if (-not [regex]::IsMatch($masked[$index], $headingPattern)) {
             continue
         }
 
-        $heading = $match.Groups[1].Value
+        $heading = [regex]::Match($lines[$index], $headingPattern).Groups[1].Value
 
         # Docusaurus honors an explicit {#custom-id} over the generated slug.
         $explicit = [regex]::Match($heading, '\{#([^}]+)\}\s*$')
